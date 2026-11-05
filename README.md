@@ -9,7 +9,7 @@ server let a human or an AI agent drive it inside those limits.
 OMX makes no claim about trading performance or profit. It is execution
 plumbing with guard rails.
 
-**Status (v0.1.0):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.2):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.
@@ -42,12 +42,18 @@ answers.
 ## Install
 
 ```
+pip install omx-hyperliquid          # PyPI; gives the `omx`, `omx-mcp` and `omx-hyperliquid` commands
+```
+
+From a checkout (development, tests):
+
+```
 python -m venv .venv
-.venv/Scripts/python -m pip install "mcp>=2.3,<3" pydantic pytest   # Windows; .venv/bin/python elsewhere
+.venv/Scripts/python -m pip install -e ".[test]"   # Windows; .venv/bin/python elsewhere
 .venv/Scripts/python -m pytest -q tests
 ```
 
-Run commands from the repository root (there is no package metadata yet).
+The commands below also work as `python -m omx.cli ...` from a checkout.
 Requires Python 3.11+ (`tomllib`; developed on 3.12). The MCP server uses the
 official `mcp` Python SDK 2.x. The live Hyperliquid venue also needs
 `eth_account` for signing.
