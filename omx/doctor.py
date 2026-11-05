@@ -238,7 +238,11 @@ def checks(cfg_path: Path, transport_factory: Optional[Callable[[str], Callable]
 def run_doctor(cfg_path: Path, out: TextIO, transport_factory: Optional[Callable[[str], Callable]] = None,
                derive: Callable[[OMXConfig], str] = default_derive, now_s: Optional[float] = None) -> int:
     """Print the checks; exit code 0 when nothing FAILed, else 1."""
-    res = checks(cfg_path, transport_factory, derive, now_s)
+    return report(checks(cfg_path, transport_factory, derive, now_s), out)
+
+
+def report(res: list[Check], out: TextIO) -> int:
+    """Print checks as `omx doctor` does; 0 when nothing FAILed, else 1 (also used by `omx setup`)."""
     for c in res:
         out.write(f"{c.status:<4}  {c.name}: {c.detail}\n")
         if c.status == FAIL and c.fix:

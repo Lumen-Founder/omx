@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import builtins
 import dataclasses
+import getpass
 import json
 import os
 import sys
@@ -107,6 +108,17 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--enable-agent", action="store_true")
     p.add_argument("--force", action="store_true", help="overwrite an existing config")
 
+    p = sub.add_parser("setup", help="guided first-time setup: network, account, API wallet key, eligibility, "
+                                     "agent limits, builder fee, config, checks (never asks for the main key)")
+    p.add_argument("--shell", choices=["auto", "posix", "powershell"], default="auto",
+                   help="quoting of the commands printed at the end (default: this OS's usual shell)")
+    p = sub.add_parser("mcp-config", help="print MCP client settings (Claude Code, Codex, Gemini, VS Code, Cursor, "
+                                          "Claude Desktop, JSON) for this config's absolute path")
+    p.add_argument("--client", default="all",
+                   choices=["claude-code", "codex", "gemini", "vscode", "cursor", "claude-desktop", "json", "all"])
+    p.add_argument("--shell", choices=["auto", "posix", "powershell"], default="auto",
+                   help="quoting of printed command lines (default: this OS's usual shell)")
+
     sub.add_parser("eligibility", help="answer the eligibility questions")
     p = sub.add_parser("daemon", help="run the OMX daemon (owns the engine); keep it running while trading")
     p.add_argument("--cancel-only", action="store_true",
@@ -181,10 +193,12 @@ def main(argv: Optional[list[str]] = None, *,
          engine_factory: Callable[[OMXConfig], Any] = default_engine_factory,
          input_fn: Callable[[str], str] = input, out: TextIO = sys.stdout, err: TextIO = sys.stderr,
          clock: Callable[[], float] = time.time, transport_factory: Optional[Callable[[str], Any]] = None,
-         serve_page: Optional[Callable[..., int]] = None) -> int:
+         serve_page: Optional[Callable[..., int]] = None,
+         getpass_fn: Callable[[str], str] = getpass.getpass) -> int:
     """engine_factory builds the daemon's engine (`omx daemon`) and the one-shot kill engine.
-    transport_factory(base_url) -> transport for `omx doctor` (tests: a fake); serve_page replaces
-    omx.approve_page.serve for `omx approve-builder` (tests)."""
+    transport_factory(base_url) -> transport for `omx doctor` / `omx setup` (tests: a fake); serve_page
+    replaces omx.approve_page.serve for `omx approve-builder` / `omx setup` (tests); getpass_fn reads the
+    API wallet key in `omx setup` without echo (tests: injected)."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if any(contains_key_like(a) for a in argv):
         err.write("refused: an argument looks like a private key. OMX never takes keys on the command line; "
@@ -192,7 +206,7 @@ def main(argv: Optional[list[str]] = None, *,
         return 2
     ns = _parser().parse_args(argv)
     try:
-        return _run(ns, engine_factory, input_fn, out, err, clock, transport_factory, serve_page)
+        return _run(ns, engine_factory, input_fn, out, err, clock, transport_factory, serve_page, getpass_fn)
     except (CLIError, ApprovalError, onboarding.NotEligible, ValueError) as e:
         err.write(f"error: {e}\n")
         return 1
@@ -325,7 +339,37 @@ def _init_builder(ns) -> tuple:
     return default, fee
 
 
-def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, serve_page=None) -> int:
+def _approve_builder(cfg: OMXConfig, out: TextIO, serve_page=None, max_fee_rate: Optional[str] = None,
+                     revoke: bool = False, open_browser: bool = True, timeout_s: float = 900.0) -> int:
+    """The `omx approve-builder` flow (also offered at the end of `omx setup`): the local page where the
+    user's own browser wallet signs; this process never sees a key or a signature."""
+    from .approve_page import ApprovePageError, approval_rate, serve
+    try:
+        approval_rate(cfg, max_fee_rate, revoke)          # fail fast, before serving anything
+    except ApprovePageError as e:
+        raise CLIError(str(e)) from None
+    if not revoke:
+        out.write(onboarding.fee_disclosure(cfg) + "\n\n")
+    return (serve_page or serve)(cfg, max_fee_rate=max_fee_rate, revoke=revoke, out=out,
+                                 open_browser=open_browser, timeout_s=timeout_s)
+
+
+def _shell(ns) -> Optional[str]:
+    return None if ns.shell == "auto" else ns.shell
+
+
+def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, serve_page=None,
+         getpass_fn=getpass.getpass) -> int:
+    if ns.cmd == "setup":                  # writes the config itself, at the end, after a confirmation
+        from .setup_wizard import run_setup
+        _require_human(input_fn)
+        return run_setup(config_path(ns.config), input_fn, getpass_fn, out, transport_factory, serve_page,
+                         shell=_shell(ns))
+
+    if ns.cmd == "mcp-config":             # needs only the config's path (and that it loads)
+        from .mcp_config import run_mcp_config
+        return run_mcp_config(config_path(ns.config), ns.client, _shell(ns), out, err)
+
     if ns.cmd == "doctor":                 # its own config check comes first, as one of the checks
         from .doctor import run_doctor
         return run_doctor(config_path(ns.config), out, transport_factory)
@@ -381,15 +425,7 @@ def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, 
         return 0
 
     if ns.cmd == "approve-builder":
-        from .approve_page import ApprovePageError, approval_rate, serve
-        try:
-            approval_rate(cfg, ns.max_fee_rate, ns.revoke)          # fail fast, before serving anything
-        except ApprovePageError as e:
-            raise CLIError(str(e)) from None
-        if not ns.revoke:
-            out.write(onboarding.fee_disclosure(cfg) + "\n\n")
-        return (serve_page or serve)(cfg, max_fee_rate=ns.max_fee_rate, revoke=ns.revoke, out=out,
-                                     open_browser=not ns.no_browser, timeout_s=ns.timeout_s)
+        return _approve_builder(cfg, out, serve_page, ns.max_fee_rate, ns.revoke, not ns.no_browser, ns.timeout_s)
 
     if ns.cmd == "daemon":
         from .daemon import DaemonError, run_daemon

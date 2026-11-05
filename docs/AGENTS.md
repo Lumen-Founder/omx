@@ -55,6 +55,8 @@ new order.
 
 ## Connect
 
+`omx mcp-config` prints these settings for your client (Claude Code, Codex, Gemini, VS Code, Cursor, Claude Desktop, JSON) filled in with your config's absolute path; see [SETUP.md](SETUP.md).
+
 Claude Desktop (`claude_desktop_config.json`):
 
 ```json

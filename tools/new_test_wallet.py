@@ -11,31 +11,15 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, Optional, Sequence, TextIO
 
-
-def restrict_to_user(path: Path) -> Optional[str]:
-    """Best effort: only the current user may read the file. Returns a warning, or None when done."""
-    if os.name != "nt":
-        try:
-            os.chmod(path, 0o600)
-            return None
-        except OSError as e:
-            return f"could not chmod 600: {e}"
-    user = os.environ.get("USERNAME")
-    if not user:
-        return "USERNAME is not set: restrict the file to your user yourself"
-    dom = os.environ.get("USERDOMAIN")
-    who = f"{dom}\\{user}" if dom else user
-    try:
-        r = subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{who}:F"],
-                           capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError) as e:
-        return f"icacls failed: {e}"
-    return None if r.returncode == 0 else f"icacls exit {r.returncode}: {(r.stdout + r.stderr).strip()[:200]}"
+try:                                   # the one permission helper lives in omx.keyfile
+    from omx.keyfile import restrict_to_user
+except ImportError:                    # run from a source checkout without an install
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from omx.keyfile import restrict_to_user
 
 
 def create(out_path: Path, restrict: Callable[[Path], Optional[str]] = restrict_to_user) -> tuple[str, Optional[str]]:

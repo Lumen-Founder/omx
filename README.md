@@ -16,7 +16,7 @@ plumbing with guard rails.
 | You worry about | What OMX does |
 |---|---|
 | Your keys | Signs only with a Hyperliquid [API (agent) wallet](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets) you create in your own account; never asks for your main key or seed. The config holds the key file's path, not the key. No withdrawal or transfer code. |
-| Limits | Every child order is checked locally: coin allowlist, liquidity and depth, price band and slippage, per-coin and account notional (resting orders included), leverage, daily loss, data age. Agents cannot change limits. |
+| Limits | Every child order is checked locally: coin allowlist, liquidity and depth, price band and slippage, per-coin and account notional (resting orders included), leverage, daily loss, data age. The engine refuses any child the policy rejects. No MCP tool can change limits; they come from the config the daemon loaded. An agent that also has shell or file access as your OS user could edit that file, so run such agents under another OS user ([trust boundary](docs/AGENTS.md)). |
 | Human approval | An agent intent above `approval_above_usd`, or beyond the agent's daily budget, waits for you: `omx approvals approve <id>`, then a confirm code typed in the daemon's terminal. Pending approvals expire. |
 | Stopping it | Any agent or human can trip the kill switch; it cancels resting OMX orders. Only a human can clear it (`omx unkill`). |
 | Audit | Every decision goes to a hash-chained log; `omx audit verify` detects tampering. |
@@ -48,6 +48,9 @@ gemini mcp add omx uvx omx-hyperliquid             # Gemini CLI
 - Gemini CLI extension: `gemini extensions install https://github.com/Lumen-Founder/omx`.
 - Any other MCP client (Claude Desktop, Cline, Windsurf, Zed, JetBrains, ...):
   `{"mcpServers": {"omx": {"command": "uvx", "args": ["omx-hyperliquid"]}}}`.
+  Claude Desktop keeps it in `claude_desktop_config.json` (Settings > Developer >
+  Edit Config; Windows `%APPDATA%\Claude\`, macOS `~/Library/Application Support/Claude/`);
+  Cursor in `~/.cursor/mcp.json`. Pin a version with `"omx-hyperliquid@0.1.6"`.
 - No `uv`? Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`;
   macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`; then open a new terminal. Or
   `pip install omx-hyperliquid` and use `omx-hyperliquid` as the command.
@@ -90,16 +93,31 @@ Codex CLI waits 10 s for a server to start by default, and the first `uvx` run
 downloads the dependencies; if it times out, add `startup_timeout_sec = 60`
 under `[mcp_servers.omx]` in `~/.codex/config.toml`.
 
-To trade with your own account, follow [Quick start](#quick-start-testnet) and
-give the same server your config: set `OMX_CONFIG` to its path in the client's
-server settings, or add `--config <path>`.
+### Set up your own account
+
+```
+pip install omx-hyperliquid        # or: uv tool install omx-hyperliquid
+omx setup                          # one guided terminal session, testnet first
+omx --config <path printed by setup> daemon     # in its own terminal, keep it open
+omx mcp-config                     # prints the settings for your MCP client
+```
+
+`omx setup` walks you through the network (testnet first), your main
+account's public address, an API wallet key (typed into a hidden prompt and
+saved to a file only your user can read, or a key file you already saved), the
+eligibility questions, agent limits, the builder-fee choice, then read-only
+checks. It never asks for your main wallet key or seed phrase, and refuses a
+key whose address is your main account. `omx mcp-config` prints the settings
+for Claude Code, Codex, Gemini, VS Code, Cursor or Claude Desktop, filled in
+with your config's absolute path. See [docs/SETUP.md](docs/SETUP.md) and the
+[Quick start](#quick-start-testnet) for each step by hand.
 
 Agent frameworks: [omx-integrations](https://github.com/Lumen-Founder/omx-integrations)
 has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
 Agent SDK, PydanticAI and CrewAI, each checked against this server with the
 framework's own MCP client (demo mode by default).
 
-**Status (v0.1.5):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.6):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.
@@ -239,8 +257,8 @@ or change limits. See `docs/SECURITY.md`, `docs/FEES.md`, `docs/AGENTS.md`.
 
 ## Builder fee
 
-OMX is free software; the maintainers are paid through a Hyperliquid builder
-code. When `omx/config.py` names a default builder for the network
+OMX is open source (MIT) and costs nothing to install or run. The maintainers
+are paid through an optional Hyperliquid builder fee on mainnet fills. When `omx/config.py` names a default builder for the network
 (`DEFAULT_BUILDER`), `omx init` sets it at 1 bp (0.01 % of filled notional).
 `--no-builder` sends no builder code, `--fee-tenths-bps` sets a lower fee, and
 `--builder-address` uses your own. Nothing is charged until you approve the

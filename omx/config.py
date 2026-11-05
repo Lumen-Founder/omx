@@ -288,8 +288,9 @@ def _q(s: str) -> str:
 
 def render(account_address: str, network: str = "testnet", key_path: Optional[str] = None,
            key_env: Optional[str] = None, builder_address: Optional[str] = None,
-           fee_tenths_bps: int = 0, agent_enabled: bool = False) -> str:
-    """Config text for `omx init`. Validated by loads() before it is returned."""
+           fee_tenths_bps: int = 0, agent_enabled: bool = False, *, approval_above_usd: float = 1000.0,
+           daily_budget_usd: float = 5000.0) -> str:
+    """Config text for `omx init` / `omx setup`. Validated by loads() before it is returned."""
     signer = f"key_path = {_q(key_path)}" if key_path is not None else f"key_env = {_q(key_env or '')}"
     builder = (f"address = {_q(builder_address)}\n" if builder_address else "# address = \"0x...\"\n")
     text = f"""# OMX config. Public data and references only: never paste a private key here.
@@ -327,8 +328,8 @@ allow_agent_sources = true
 
 [agent]
 enabled = {"true" if agent_enabled else "false"}
-approval_above_usd = 1000.0       # per-intent notional above this waits for a human
-daily_budget_usd = 5000.0         # agent notional per UTC day; beyond it every intent waits for a human
+approval_above_usd = {float(approval_above_usd)!r}       # per-intent notional above this waits for a human
+daily_budget_usd = {float(daily_budget_usd)!r}         # agent notional per UTC day; beyond it every intent waits for a human
 allowed_coins = ["BTC", "ETH"]    # must be a subset of policy.allowed_coins
 approval_ttl_s = 600
 """
