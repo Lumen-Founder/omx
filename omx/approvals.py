@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .audit import AuditLog, file_lock
+from .algos.planner import NATIVE_TWAP_SLIPPAGE_BPS
 from .types import Algo, Intent, Side, to_record
 
 Clock = Callable[[], float]
@@ -104,8 +105,12 @@ def intent_from_record(d: dict) -> Intent:
 
 
 def notional_bound_usd(intent: Intent, mid: float) -> float:
-    """Upper bound on what the intent can trade: size at mid moved by the full slippage cap."""
-    px = mid * (1 + intent.max_slippage_bps / 1e4)
+    """Upper bound on what the intent can trade: size at mid moved by the full slippage cap (for a native
+    TWAP at least the protocol's 3 % suborder slippage, which OMX cannot narrow)."""
+    slip = intent.max_slippage_bps
+    if intent.algo is Algo.NATIVE_TWAP:
+        slip = max(slip, NATIVE_TWAP_SLIPPAGE_BPS)
+    px = mid * (1 + slip / 1e4)
     if intent.limit_px is not None and intent.side is Side.BUY:
         px = min(px, intent.limit_px)
     return intent.size * px

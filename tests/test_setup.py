@@ -131,7 +131,8 @@ def test_setup_through_the_cli_with_the_real_permission_helper(tmp_path):
     kp = p.parent / "secrets" / "hl_agent_testnet.key"
     assert kp.read_text(encoding="ascii").strip() == key_hex
     if os.name == "nt":
-        acl = subprocess.run(["icacls", str(kp)], capture_output=True, text=True).stdout
+        acl = subprocess.run(["icacls", str(kp)], capture_output=True, text=True, encoding="oem",
+                             errors="replace").stdout
         assert "(I)" not in acl                         # no inherited entries left
         assert os.environ["USERNAME"].lower() in acl.lower()
     else:

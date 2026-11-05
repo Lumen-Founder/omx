@@ -132,6 +132,9 @@ class DemoGateway(AgentGateway):
     def order_status(self, intent_id):
         return self._mark(super().order_status(intent_id))
 
+    def get_receipt(self, intent_id):
+        return self._mark(super().get_receipt(intent_id))
+
     def cancel_order(self, source, intent_id):
         return self._mark(super().cancel_order(source, intent_id))
 

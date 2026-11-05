@@ -29,8 +29,10 @@ def restrict_to_user(path: Path) -> Optional[str]:
     dom = os.environ.get("USERDOMAIN")
     who = f"{dom}\\{user}" if dom else user
     try:
+        # icacls writes in the console code page (cp949 on Korean Windows), not UTF-8: decode it as such,
+        # so Python's UTF-8 mode (-X utf8 / PYTHONUTF8=1) cannot break the reader
         r = subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{who}:F"],
-                           capture_output=True, text=True, timeout=30)
+                           capture_output=True, text=True, encoding="oem", errors="replace", timeout=30)
     except (OSError, subprocess.SubprocessError) as e:
         return f"icacls failed: {e}"
     return None if r.returncode == 0 else f"icacls exit {r.returncode}: {(r.stdout + r.stderr).strip()[:200]}"

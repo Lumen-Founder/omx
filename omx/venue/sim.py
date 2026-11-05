@@ -33,6 +33,12 @@ builder_fee_usd = notional * f / 1e5 (f in tenths of a bps) separately from the 
 approve_builder_fee(address, f) is the user's approval as maxBuilderFee reports it (default 0); with
 SimConfig.require_builder_approval an order whose f exceeds it is rejected like on Hyperliquid.
 set_builder_fee(f) is the older fee-only form (no address).
+
+Native TWAP (Hyperliquid twapOrder, MODEL): place_twap(child, minutes) starts a protocol TWAP that sends
+a market suborder every 30 s, sized remaining / suborders left (at most 3x the even size), each walking
+the displayed book no further than 3 % from mid. Suborders carry no builder and no OMX cloid, so
+fills_since reports them under their own ids (tw<id>.<n>), which the engine does not own; the engine
+reads them with twap_fills(twap_id). cancel_twap stops the remaining suborders at once.
 """
 from __future__ import annotations
 
@@ -114,6 +120,7 @@ class _Order:
     reason: str = ""
     cloid: str = ""
     builder: Optional[tuple] = None      # (address, f) this order carries
+    twap_id: str = ""                    # suborder of a native TWAP: no builder fee
 
 
 _PRIO = {"cancel": 0, "Alo": 1}
@@ -156,6 +163,8 @@ class SimVenue:
         self._delay_places: list[int] = []
         self._inflight: list[tuple[int, int, ChildOrder, str]] = []   # (arrive ms, expires ms, child, cloid)
         self._flows: list[tuple[int, float]] = []
+        self._twaps: dict[str, dict] = {}         # twap id -> {"child", "end", "next", "n", "rem", "state", "fills"}
+        self.twap_calls = 0
         self.events: deque = deque(maxlen=20_000)  # (ts, kind, child_id) processing log
         for c in sorted(self.specs):
             self._regen(c)
@@ -208,7 +217,7 @@ class SimVenue:
         px = self._px(c, px_idx)
         ntl = sz * px
         fee = ntl * (self.cfg.taker_fee_bps if crossed else self.cfg.maker_fee_bps) / 1e4
-        f = o.builder[1] if o.builder is not None else self.builder_fee_tenths_bps
+        f = 0 if o.twap_id else (o.builder[1] if o.builder is not None else self.builder_fee_tenths_bps)
         bfee = ntl * f / 1e5
         self.cash -= fee + bfee
         q = sz * o.child.side.sign
@@ -389,6 +398,7 @@ class SimVenue:
             self._regen(c)
             self._through(c)
         self._process_due()
+        self._run_twaps()
         for c in coins:
             s = self.specs[c]
             before = self._mid[c]
@@ -506,6 +516,89 @@ class SimVenue:
             o.cancel_requested = True
             self._due.append((self._now + self.cfg.cancel_latency_ms, 0, self._next_seq(), "cancel", venue_oid))
         return True
+
+    # ---------------------------------------------------------------- native TWAP (model, see module doc)
+    TWAP_SUBORDER_MS = 30_000
+    TWAP_CATCHUP = 3.0
+    TWAP_SLIPPAGE = 0.03
+
+    def place_twap(self, child: ChildOrder, minutes: int, randomize: bool = False) -> str:
+        self.twap_calls += 1
+        s = self.specs.get(child.coin)
+        if s is None:
+            raise VenueError(f"unknown coin {child.coin}")
+        if child.builder is not None:
+            raise VenueError("a native TWAP carries no builder")
+        if not 5 <= int(minutes) <= 7 * 1440:
+            raise VenueError("TWAP minutes must be 5 to 10080")
+        if child.size <= 0 or abs(child.size * 10 ** s.sz_decimals - round(child.size * 10 ** s.sz_decimals)) > 1e-6:
+            raise VenueError(f"bad size {child.size}")
+        if self._fail_places > 0:
+            self._fail_places -= 1
+            raise VenueError("injected venue error")
+        if self._lose_responses > 0:            # started, response lost
+            self._lose_responses -= 1
+            self._new_twap(child, minutes)
+            raise VenueAmbiguous("injected: twap started, response lost", self._now + self.cfg.order_expiry_ms)
+        return self._new_twap(child, minutes)
+
+    def _new_twap(self, child: ChildOrder, minutes: int) -> str:
+        tid = str(len(self._twaps) + 1)
+        n = max(1, int(minutes) * 60_000 // self.TWAP_SUBORDER_MS)
+        self._twaps[tid] = {"child": child, "end": self._now + int(minutes) * 60_000, "next": self._now,
+                            "n": n, "rem": child.size, "state": "running", "fills": [], "k": 0}
+        return tid
+
+    def _run_twaps(self) -> None:
+        for tid, t in self._twaps.items():
+            while t["state"] == "running" and self._now >= t["next"]:
+                self._twap_slice(tid, t)
+                t["next"] += self.TWAP_SUBORDER_MS
+                if t["rem"] <= EPS or t["next"] > t["end"]:
+                    t["state"] = "finished"
+
+    def _twap_slice(self, tid: str, t: dict) -> None:
+        ch: ChildOrder = t["child"]
+        c = ch.coin
+        left = max(1, -(-(t["end"] - self._now) // self.TWAP_SUBORDER_MS))
+        even = ch.size / t["n"]
+        sz = self._floor_lot(c, min(t["rem"], max(t["rem"] / left, even), self.TWAP_CATCHUP * even))
+        if ch.reduce_only:
+            pos = self._pos.get(c, [0.0, 0.0])[0]
+            if abs(pos) < EPS or (pos > 0) == (ch.side is Side.BUY):
+                return
+            sz = min(sz, self._floor_lot(c, abs(pos)))
+        if sz <= EPS:
+            return
+        t["k"] += 1
+        mid = self._mid[c]
+        lim = mid * (1 + self.TWAP_SLIPPAGE * ch.side.sign)
+        tick = self.specs[c].tick
+        idx = math.floor(lim / tick + EPS) if ch.side is Side.BUY else math.ceil(lim / tick - EPS)
+        sub = ChildOrder(f"tw{tid}.{t['k']}", "", c, ch.side, sz, self._px(c, idx), "Ioc", ch.reduce_only, "")
+        o = _Order(f"tw{tid}.{t['k']}", sub, idx, sz, self._next_seq(), status="live", twap_id=tid)
+        n0 = len(self._fills)
+        self._take(o)
+        new = self._fills[n0:]
+        t["fills"].extend(new)
+        t["rem"] = round(t["rem"] - sum(f.size for f in new), self.specs[c].sz_decimals)
+
+    def cancel_twap(self, coin: str, twap_id: str) -> bool:
+        self.cancel_calls += 1
+        t = self._twaps.get(str(twap_id))
+        if t is None or t["child"].coin != coin or t["state"] != "running":
+            return False
+        t["state"] = "terminated"
+        return True
+
+    def twap_fills(self, twap_id: str) -> list[Fill]:
+        t = self._twaps.get(str(twap_id))
+        return list(t["fills"]) if t is not None else []
+
+    def twap_state(self, twap_id: str) -> Optional[str]:
+        """Test hook: running | finished | terminated (None = no such TWAP)."""
+        t = self._twaps.get(str(twap_id))
+        return t["state"] if t is not None else None
 
     def fills_since(self, ts_ms: int) -> list[Fill]:
         return self._fills[bisect.bisect_left(self._fill_ts, ts_ms):]

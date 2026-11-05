@@ -81,6 +81,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import receipt as receipt_mod
 from . import tca
 from .account_mode import BASIS_PERP, UNIFIED_MODES, mode_block_reason
 from .algos import planner as P
@@ -111,6 +112,10 @@ LOST = {"not_sent", "not_accepted"}   # children we gave up on; if one shows up 
 KILL_SCOPES = ("omx", "all")
 DEFAULT_FEES = {"taker": 4.5, "maker": 1.5}
 ORPHAN_SWEEP_MS = 60_000          # periodic sweep of OMX orders this engine does not own
+TWAP_TIF = "Twap"                 # the engine's record of a native TWAP (never sent as an order)
+TWAP_POLL_MS = 10_000             # suborder fills of a running native TWAP are read this often
+TWAP_GRACE_MS = 60_000            # past its running time a native TWAP is read once more, then ended
+TWAP_FILE = "native_twaps.jsonl"  # started native TWAPs (state_dir): cancelled at start / kill if not owned
 FLOW_RISE_USD, FLOW_RISE_FRAC = 1.0, 0.005   # equity this far above the low since the ledger read: re-read it
 CANCEL_ONLY = "CANCEL_ONLY"
 UNKNOWN_INTENT_MSG = ("UNKNOWN_INTENT: this engine has no record of it (e.g. it was submitted before the daemon "
@@ -200,6 +205,34 @@ def _accepts_abort(fn) -> bool:
     return "abort" in ps or any(p.kind is p.VAR_KEYWORD for p in ps.values())
 
 
+def native_twap_gate(cfg: PolicyConfig, venue) -> Optional[str]:
+    if not cfg.allow_native_twap:
+        return "NATIVE_TWAP_DISABLED: policy.allow_native_twap is false"
+    if not hasattr(venue, "place_twap"):
+        return "NATIVE_TWAP_UNSUPPORTED: this venue has no protocol TWAP"
+    return None
+
+
+def native_twap_policy(cfg: PolicyConfig) -> PolicyConfig:
+    """The whole TWAP is one check at full size; max_child_notional_usd applies to the estimated suborder
+    (native_twap_checks), not to the parent."""
+    return replace(cfg, max_child_notional_usd=math.inf)
+
+
+def native_twap_checks(intent: Intent, notional_usd: float, cfg: PolicyConfig) -> tuple[list, dict]:
+    """Extra reasons for a native TWAP and the numbers behind them. The protocol may catch up to
+    NATIVE_TWAP_CATCHUP times the even suborder size, so that is the size held to max_child_notional_usd."""
+    n = max(1, intent.duration_s // P.NATIVE_TWAP_SUBORDER_S)
+    sub = notional_usd / n * P.NATIVE_TWAP_CATCHUP
+    more = []
+    if notional_usd < P.NATIVE_TWAP_MIN_USD:
+        more.append(f"NATIVE_TWAP_MIN_NOTIONAL:{P.NATIVE_TWAP_MIN_USD:g}")
+    if sub > cfg.max_child_notional_usd and not intent.reduce_only:
+        more.append(f"NATIVE_TWAP_SUBORDER_CAP:{sub:.0f}>{cfg.max_child_notional_usd:g}")
+    return more, {"suborders": n, "suborder_bound_usd": round(sub, 2),
+                  "suborder_max_slippage_bps": P.NATIVE_TWAP_SLIPPAGE_BPS, "builder_fee": None}
+
+
 @dataclass
 class _Child:
     order: ChildOrder
@@ -211,6 +244,9 @@ class _Child:
     cancel_pending: bool = False
     status: str = "sent"
     resend_after: int = 0             # an unknown child is not resent before this (its action's expiry)
+    end_ms: int = 0                   # native TWAP: start + running time
+    read_ms: int = 0                  # native TWAP: last suborder-fill read
+    seen: set = field(default_factory=set)   # native TWAP: suborder fill keys already booked
 
     def done_sz(self) -> float:
         return max(self.filled, self.ack_filled)
@@ -278,6 +314,7 @@ class Engine:
             raise ValueError("a builder fee > 0 needs a builder address (fail closed: no fee without its builder)")
         self.builder: Optional[tuple] = builder_of(builder_address, self.builder_fee_tenths_bps)
         self._builder_block: Optional[str] = None
+        self._receipt_anchors: dict = {}           # (intent_id, receipt_hash) -> audit line hash
         self.state_dir = Path(state_dir) if state_dir is not None else None
         self.instance = instance_tag(self.state_dir)     # in every cloid this engine sends (R3-5)
         self.clock = clock or venue.now_ms
@@ -470,6 +507,8 @@ class Engine:
         listed = {o.child_id: o for o in raw.open_orders}
         for w in self._work.values():
             for c in w.open_children():
+                if c.order.tif == TWAP_TIF:   # never listed: read through twap_fills (_poll_twaps)
+                    continue
                 o = listed.get(c.order.child_id)
                 if c.status in UNRESOLVED:
                     self._resolve(w, c, o, now)
@@ -541,6 +580,9 @@ class Engine:
     def _cancel_child(self, w: _Work, c: _Child, reason: str) -> None:
         if c.terminal or c.cancel_pending or not c.oid:
             return                    # an unknown child is cancelled once it is resolved
+        if c.order.tif == TWAP_TIF:
+            self._cancel_twap(w, c, reason)
+            return
         try:
             ok = bool(self.venue.cancel(c.order.coin, c.oid))
         except Exception as e:  # venue errors must not stop the engine
@@ -551,6 +593,108 @@ class Engine:
         self._cancel_sent[c.oid] = self.clock()
         self.audit.append("cancel", {"intent_id": w.intent.intent_id, "child_id": c.order.child_id,
                                      "oid": c.oid, "ok": ok, "reason": reason, "now_ms": self.clock()})
+
+    def _cancel_twap(self, w: _Work, c: _Child, reason: str) -> None:
+        """Stop a native TWAP (twapCancel). Its last suborder fills are read SETTLE_MS later, then it ends."""
+        now = self.clock()
+        try:
+            ok = bool(self.venue.cancel_twap(c.order.coin, c.oid.split(":", 1)[1]))
+        except Exception as e:  # retried at the next step
+            self.audit.append("cancel", {"intent_id": w.intent.intent_id, "child_id": c.order.child_id,
+                                         "oid": c.oid, "ok": False, "reason": reason, "native_twap": True,
+                                         "error": repr(e), "now_ms": now})
+            return
+        c.cancel_pending, self._cancel_sent[c.oid] = True, now
+        if ok:
+            c.status = "cancelling"
+        self.audit.append("cancel", {"intent_id": w.intent.intent_id, "child_id": c.order.child_id,
+                                     "oid": c.oid, "ok": ok, "reason": reason, "native_twap": True, "now_ms": now})
+
+    def _poll_twaps(self, now: int) -> None:
+        """Book suborder fills of running native TWAPs and end them once filled, cancelled or past their time."""
+        for w in self._work.values():
+            for c in w.open_children():
+                if c.order.tif != TWAP_TIF:
+                    continue
+                if c.status == "unknown":       # the start's outcome is unknown: no id to read or cancel
+                    if now >= c.end_ms + TWAP_GRACE_MS:
+                        self._end_child(w, c, "gone")
+                        self.audit.append("child_resolved", {"intent_id": w.intent.intent_id,
+                                                             "child_id": c.order.child_id, "venue_state": "unknown",
+                                                             "status": "gone", "native_twap": True, "now_ms": now})
+                    continue
+                ending = (c.cancel_pending and now - self._cancel_sent.get(c.oid, now) >= SETTLE_MS) \
+                    or now >= c.end_ms + TWAP_GRACE_MS
+                if not ending and now - c.read_ms < TWAP_POLL_MS:
+                    continue
+                c.read_ms = now
+                try:
+                    fills = self.venue.twap_fills(c.oid.split(":", 1)[1])
+                except Exception as e:  # read again next step
+                    self.audit.append("venue_error", {"where": "twap_fills", "child_id": c.order.child_id,
+                                                      "error": repr(e), "now_ms": now})
+                    continue
+                for f in fills:
+                    key = f.fill_id or (f.ts_ms, f.size, f.px, f.side.value)
+                    if key in c.seen:
+                        continue
+                    c.seen.add(key)
+                    f = replace(f, child_id=c.order.child_id)
+                    w.fills.append(f)
+                    c.filled += f.size
+                    self.audit.append("fill", {"intent_id": w.intent.intent_id, "fill": to_record(f),
+                                               "native_twap": True})
+                if c.remaining() <= 1e-12:
+                    self._end_child(w, c, "filled")
+                elif ending:
+                    self._end_child(w, c, "cancelled" if c.status == "cancelling" else "finished")
+
+    def _twap_file(self) -> Optional[Path]:
+        return self.state_dir / TWAP_FILE if self.state_dir is not None else None
+
+    def _store_twap(self, w: _Work, c: _Child) -> None:
+        path = self._twap_file()
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rec = {"twap_id": c.oid.split(":", 1)[1], "coin": c.order.coin, "child_id": c.order.child_id,
+               "intent_id": w.intent.intent_id, "end_ms": c.end_ms}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, sort_keys=True) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+
+    def _cancel_stored_twaps(self, reason: str) -> int:
+        """Cancel native TWAPs started from this state_dir by an earlier run (not owned here) that may still
+        run. A protocol TWAP has no cloid and is not an open order, so the account sweeps cannot see it."""
+        path = self._twap_file()
+        if path is None or not path.exists() or not hasattr(self.venue, "cancel_twap"):
+            return 0
+        now, keep, n = self.clock(), [], 0
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+                end = int(r["end_ms"])
+            except Exception:  # a torn last line: nothing to act on
+                continue
+            if now >= end + TWAP_GRACE_MS:
+                continue
+            if r.get("child_id") in self._child_intent:
+                keep.append(r)
+                continue
+            try:
+                ok, err = bool(self.venue.cancel_twap(r["coin"], str(r["twap_id"]))), None
+            except Exception as e:  # kept: tried again at the next start / kill
+                ok, err = False, repr(e)
+                keep.append(r)
+            n += err is None
+            self.audit.append("cancel", {"scope": "native_twap", "twap_id": r["twap_id"], "coin": r["coin"],
+                                         "child_id": r.get("child_id"), "ok": ok, "reason": reason,
+                                         **({"error": err} if err else {}), "now_ms": now})
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in keep), encoding="utf-8")
+        os.replace(tmp, path)
+        return n
 
     def _cancel_everything(self, reason: str) -> int:
         n = 0
@@ -608,6 +752,10 @@ class Engine:
         n = self._cancel_everything("KILL")
         rec = {"killed": True, "reason": reason, "source": source, "scope": scope, "ts_ms": now}
         try:
+            n += self._cancel_stored_twaps("KILL")
+        except Exception as e:  # the next start tries the stored TWAPs again
+            rec["twap_sweep_error"] = repr(e)
+        try:
             n += self._cancel_venue_orders(self.venue.account().open_orders, scope, "KILL")
             if self._cancel_errs:
                 rec["cancel_errors"] = self._cancel_errs
@@ -662,6 +810,7 @@ class Engine:
         if self._killed:
             self._orphan_ms = self.clock()
             return                    # the kill procedure already swept the account
+        self._cancel_stored_twaps("ORPHAN")
         self._sweep_orphans(raw, "start")
 
     def _sweep_orphans(self, raw: AccountState, phase: str) -> None:
@@ -698,9 +847,9 @@ class Engine:
             self._cancel_child(w, c, reason)
 
     def _decide(self, w: _Work, child: ChildOrder, snap: MarketSnapshot, acct: AccountState, now: int,
-                **extra) -> list:
-        d = evaluate(child, w.intent, snap, acct, self.cfg, now, self._is_killed(), self._refs())
-        reasons = list(d.reasons)
+                cfg: Optional[PolicyConfig] = None, more: tuple = (), **extra) -> list:
+        d = evaluate(child, w.intent, snap, acct, cfg or self.cfg, now, self._is_killed(), self._refs())
+        reasons = list(d.reasons) + list(more)
         if d.allow and self._is_killed():                       # last guard right before sending
             reasons = ["KILL_SWITCH_ACTIVE"]
         self.audit.append("child_decision", {"intent_id": w.intent.intent_id, "child": to_record(child),
@@ -826,6 +975,9 @@ class Engine:
         if w.state in TERMINAL or now < w.next_try_ms:
             return
         snap = self._snap(w.intent.coin)
+        if w.intent.algo is Algo.NATIVE_TWAP:
+            self._advance_native(w, snap, now)
+            return
         resend = next((c for c in w.open_children() if c.status == "resend"), None)
         if resend is not None:
             self._resend(w, resend, snap, now)
@@ -844,6 +996,79 @@ class Engine:
             return
         if self._send(w, places[0], snap, now):
             w.algo = pl.state
+
+    def _advance_native(self, w: _Work, snap: MarketSnapshot, now: int) -> None:
+        c = next(iter(w.children.values()), None)
+        if c is None:
+            self._start_native(w, snap, now)
+        elif c.terminal:
+            w.state, w.done_ms = "done", now
+            f, s = w.filled(), w.intent.size
+            w.message = "filled" if f >= s - 1e-12 else f"partial: {f:g} of {s:g}"
+            if c.status == "gone":
+                w.message += "; NATIVE_TWAP_OUTCOME_UNKNOWN: the start's answer was lost; check the venue"
+
+    def _start_native(self, w: _Work, snap: MarketSnapshot, now: int) -> None:
+        """One protocol TWAP for the whole intent. OMX checks it once at full size: exposure, leverage,
+        loss, allowlist, liquidity, freshness, plus an estimated suborder cap; the suborders themselves are
+        sent by the venue and may each slip up to NATIVE_TWAP_SLIPPAGE_BPS."""
+        it = w.intent
+        if snap.mid is None:
+            self._reject(w, now, "blocked: NO_TWO_SIDED_BOOK")
+            return
+        size = P.round_sz(it.size, self.venue.size_decimals(it.coin))
+        if size <= 0:
+            self._reject(w, now, "blocked: SIZE_ROUNDS_TO_ZERO")
+            return
+        px = P.round_px(snap.mid, self.venue.tick_size(it.coin), "near")
+        w.issued += 1
+        child = ChildOrder(f"{it.intent_id}.tw", it.intent_id, it.coin, it.side, size, px, TWAP_TIF,
+                           it.reduce_only, "", None)
+        more, info = native_twap_checks(it, size * px, self.cfg)
+        reasons = self._decide(w, child, snap, self._acct, now, cfg=native_twap_policy(self.cfg), more=more,
+                               native_twap=info)
+        if reasons:
+            self._reject(w, now, "blocked: " + ",".join(reasons))
+            return
+        self.audit.append("child_sent", {"intent_id": it.intent_id, "child_id": child.child_id,
+                                         "native_twap": True, "minutes": it.duration_s // 60, "now_ms": now})
+        fn = self.venue.place_twap
+        try:
+            if _accepts_abort(fn):
+                tid = fn(child, it.duration_s // 60, False, abort=self._abort)
+            else:
+                tid = fn(child, it.duration_s // 60, False)
+        except VenueAborted as e:
+            self.audit.append("child_aborted", {"intent_id": it.intent_id, "child_id": child.child_id,
+                                                "error": repr(e), "now_ms": now})
+            if not self._is_killed():
+                self._reject(w, now, "aborted before send")
+            return
+        except Exception as e:
+            if isinstance(e, VenueError) and not isinstance(e, VenueAmbiguous):     # refused: nothing runs
+                w.errors += 1
+                self.audit.append("child_error", {"intent_id": it.intent_id, "child_id": child.child_id,
+                                                  "error": repr(e), "now_ms": now})
+                self._reject(w, now, f"venue refused the native TWAP: {e}"[:300])
+                return
+            # it may be running and we have no id: keep its full size in exposure for its running time
+            c = self._register(w, child, None, now, "unknown")
+            c.end_ms = now + it.duration_s * 1000
+            w.errors += 1
+            w.state = "working"
+            w.message = "NATIVE_TWAP_OUTCOME_UNKNOWN: it may be running; check the venue (no id to cancel)"
+            self.audit.append("child_unknown", {"intent_id": it.intent_id, "child_id": child.child_id,
+                                                "error": repr(e), "native_twap": True, "now_ms": now})
+            return
+        c = self._register(w, child, f"twap:{tid}", now, "running")
+        c.end_ms, c.read_ms = now + it.duration_s * 1000, now
+        self._store_twap(w, c)
+        w.state = "working"
+        self.audit.append("child_ack", {"intent_id": it.intent_id, "child_id": child.child_id, "oid": c.oid,
+                                        "native_twap": True, "end_ms": c.end_ms})
+        if self._is_killed():                                   # the answer came back after a kill
+            w.state, w.done_ms, w.message = "killed", now, "killed"
+            self._cancel_child(w, c, "KILL_AFTER_ACK")
 
     def _finalize(self) -> None:
         for w in self._work.values():
@@ -919,6 +1144,7 @@ class Engine:
             self.audit.append("venue_error", {"where": "poll", "error": repr(e), "now_ms": now})
             return
         self._venue_errs = 0
+        self._poll_twaps(now)
         if self._killed:
             self._cancel_everything("KILL")                     # retries cancels that failed earlier
             if fresh:
@@ -951,6 +1177,8 @@ class Engine:
             reason = "KILL_SWITCH_ACTIVE"
         if reason is None and intent.algo is Algo.POV and not hasattr(self.venue, "trades_since"):
             reason = "POV_NEEDS_TRADE_FEED"
+        if reason is None and intent.algo is Algo.NATIVE_TWAP:
+            reason = native_twap_gate(self.cfg, self.venue)
         mid = None
         try:
             mid = self.venue.snapshot(intent.coin).mid
@@ -1054,6 +1282,8 @@ class Engine:
         exch = 0.0
         ntl = 0.0
         killed = self._is_killed()
+        native = intent.algo is Algo.NATIVE_TWAP
+        builder_ntl = 0.0
         if reason is None:
             ctx = P.Ctx(now, now, snap.mid or 0.0, snap.mid, snap.best_bid, snap.best_ask,
                         self.venue.tick_size(intent.coin), self.venue.size_decimals(intent.coin))
@@ -1063,16 +1293,26 @@ class Engine:
                 child = ChildOrder(f"{intent.intent_id}.preview{i}", intent.intent_id, intent.coin, intent.side,
                                    s["size"], s["px"], s["tif"], intent.reduce_only)
                 d = evaluate(child, intent, snap, replace(acct, open_orders=acct.open_orders + extra),
-                             self.cfg, now, killed, self._refs())
+                             native_twap_policy(self.cfg) if native else self.cfg, now, killed, self._refs())
                 extra += (OpenOrder(child.child_id, child.coin, child.side, child.size, child.px, child.reduce_only),)
                 n = s["size"] * s["px"]
                 ntl += n
-                exch += n * (fees["taker"] if s["tif"] == "Ioc" else fees["maker"]) / 1e4
-                rows.append({**s, "allow": d.allow, "reasons": list(d.reasons), "checks": _clean(d.checks)})
+                exch += n * (fees["taker"] if s["tif"] in ("Ioc", TWAP_TIF) else fees["maker"]) / 1e4
+                row = {**s, "allow": d.allow, "reasons": list(d.reasons), "checks": _clean(d.checks)}
+                if native:
+                    more, info = native_twap_checks(intent, n, self.cfg)
+                    gate = native_twap_gate(self.cfg, self.venue)
+                    row["reasons"] += more + ([gate] if gate else [])
+                    row["allow"] = not row["reasons"]
+                    row["native_twap"] = info
+                else:
+                    builder_ntl += n
+                rows.append(row)
         out = {"intent": to_record(intent), "valid": reason is None, "reason": reason, "arrival_mid": snap.mid,
                "data_age_ms": now - snap.ts_ms, "children": rows, "notional_usd": ntl,
-               "est_fee_usd": {"exchange": exch, "builder": ntl * self.builder_fee_tenths_bps / 1e5},
-               "fee_assumption": "Ioc at taker rate, Alo/Gtc at maker rate", "killed": killed, "sent": 0,
+               "est_fee_usd": {"exchange": exch, "builder": builder_ntl * self.builder_fee_tenths_bps / 1e5},
+               "fee_assumption": "Ioc and native TWAP suborders at taker rate, Alo/Gtc at maker rate; "
+                                 "a native TWAP carries no builder fee", "killed": killed, "sent": 0,
                "builder": list(self.builder) if self.builder else None, "builder_block": self._builder_block}
         self.audit.append("preview", _clean(out))
         return out
@@ -1118,6 +1358,33 @@ class Engine:
         trades = between(w.intent.coin, w.start_ms, end) if between else None
         return tca.build_report(w.intent, w.fills, w.arrival_mid, w.start_ms, end, trades,
                                 getattr(self.venue, "mid_at", None), horizons_ms, w.sent, w.blocked)
+
+    def receipt(self, intent_id: str, network: Optional[str] = None) -> dict:
+        """Execution receipt of a known intent (omx.receipt). A final receipt is anchored once per
+        receipt hash in the audit log (`receipt` record); polling it again writes nothing new."""
+        w = self._work[intent_id]
+        children = [{"child_id": cid, "cloid": c.order.cloid, "oid": c.oid, "tif": c.order.tif,
+                     "px": c.order.px, "size": c.order.size, "reduce_only": c.order.reduce_only,
+                     "sent_ms": c.sent_ms, "status": c.status, "filled": c.done_sz(),
+                     "builder": list(c.order.builder) if c.order.builder else None,
+                     "route": "hyperliquid_native_twap" if c.order.tif == TWAP_TIF else "omx"}
+                    for cid, c in w.children.items()]
+        fills = [{"fill_id": f.fill_id, "child_id": f.child_id, "px": f.px, "size": f.size, "fee_usd": f.fee_usd,
+                  "builder_fee_usd": f.builder_fee_usd, "crossed": f.crossed, "ts_ms": f.ts_ms}
+                 for f in sorted(w.fills, key=lambda f: (f.ts_ms, f.fill_id))]
+        try:
+            tca_report = self.tca(intent_id)
+        except Exception as e:  # a venue without trade history still gets a receipt
+            tca_report = {"error": f"TCA_UNAVAILABLE:{type(e).__name__}"}
+        rec = receipt_mod.build(to_record(w.intent), w.state, to_record(self._report(w)), tca_report,
+                                children, fills, self.builder, network)
+        if rec["final"]:
+            key = (intent_id, rec["receipt_hash"])
+            if key not in self._receipt_anchors:
+                self._receipt_anchors[key] = self.audit.append("receipt", {"intent_id": intent_id,
+                                                             "receipt_hash": rec["receipt_hash"]}, durable=True)
+            rec["audit_anchor"] = self._receipt_anchors[key]
+        return rec
 
     def intents(self) -> list[str]:
         return list(self._work)

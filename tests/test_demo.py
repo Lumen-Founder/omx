@@ -129,6 +129,12 @@ def test_small_twap_runs_to_a_full_fill(rt):
     assert any(p["coin"] == "ETH" and p["size"] == pytest.approx(0.1) for p in acct["positions"])
     assert acct["agent_budget_used_usd"] > 0
     assert call(srv, "submit_order", {**SMALL_TWAP, "client_intent_id": "demo-twap-01"})["status"] == "duplicate"
+    rc = call(srv, "get_receipt", {"intent_id": iid})
+    assert rc["ok"] and rc["demo"] is True
+    rec = rc["receipt"]
+    assert rec["final"] and rec["checks"]["fills_match"] and rec["audit_anchor"]
+    assert sum(f["size"] for f in rec["fills"]) == pytest.approx(0.1)
+    assert call(srv, "get_receipt", {"intent_id": "nope"})["block_reasons"] == ["UNKNOWN_INTENT_ID"]
     assert rt.errors == []
 
 

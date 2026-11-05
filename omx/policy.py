@@ -32,6 +32,10 @@ class PolicyConfig:
     max_data_age_ms: int = 3_000               # book older than this blocks orders
     max_child_notional_usd: float = 5_000.0
     allow_agent_sources: bool = True
+    # Hyperliquid's own TWAP: the protocol sends the suborders, so OMX checks the whole order once (exposure,
+    # leverage, loss, allowlist, an estimated suborder cap) but cannot hold each suborder to price_band_bps;
+    # every suborder may slip up to 3 %. Off unless the user turns it on.
+    allow_native_twap: bool = False
 
     def coin_cap(self, coin: str) -> float:
         return self.max_coin_notional_usd.get(coin, self.default_coin_notional_usd)

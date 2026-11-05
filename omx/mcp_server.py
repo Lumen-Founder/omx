@@ -47,13 +47,14 @@ from typing import Any, Callable, Optional
 from mcp.server.mcpserver import Context, MCPServer
 
 from . import ipc
+from .algos import planner as P
 from .approvals import AgentBudget, ApprovalError, ApprovalQueue, make_intent, notional_bound_usd
 from .audit import AuditLog
 from .config import OMXConfig, contains_key_like, eligibility_gate
 from .engine_api import EngineAPI, kill_engine
 from .killswitch import kill_from_outside
 from .onboarding import builder_fee_usd, max_fee_rate_str
-from .types import Side, to_record
+from .types import Algo, Side, to_record
 
 CLIENT = re.compile(r"[^A-Za-z0-9._-]+")
 CLIENT_INTENT_ID = re.compile(r"^[A-Za-z0-9_-]{8,40}$")
@@ -106,6 +107,35 @@ def _unknown(rep: dict) -> bool:
 
 def _err(code: str, **extra) -> dict:
     return {"ok": False, "block_reasons": [code], **extra}
+
+
+def route_alternatives(intent, notional_usd: float, omx_builder_fee_usd: float,
+                       native_twap_in_omx: bool = False) -> list[dict]:
+    """Other ways to execute the same intent, chosen from the intent alone: OMX's own revenue is shown,
+    never used to decide what is listed."""
+    out = []
+    algo = getattr(intent.algo, "value", intent.algo)
+    dur = intent.duration_s or 0
+    if (algo in ("twap", "pov") and P.NATIVE_TWAP_MIN_S <= dur <= P.NATIVE_TWAP_MAX_S
+            and notional_usd >= P.NATIVE_TWAP_MIN_USD):
+        out.append({
+            "route": "hyperliquid_native_twap",
+            "available_in_omx": bool(native_twap_in_omx),
+            "how": ("submit the same intent with algo native_twap (a human approves it in the daemon console)"
+                    if native_twap_in_omx else
+                    "the Hyperliquid app's TWAP order, or the exchange API action twapOrder; in OMX it needs "
+                    "policy.allow_native_twap = true"),
+            "builder_fee_usd": 0.0,
+            "omx_builder_fee_bound_usd": round(omx_builder_fee_usd, 4),
+            "facts": ["protocol suborders at least 30 s apart for the chosen running time (5 min to 7 days)",
+                      "each suborder is limited to 3 % slippage; the API action has no limit price field",
+                      "the order is visible to the market while it runs",
+                      "OMX's limits, approvals and kill switch do not cover an order placed outside OMX"],
+            "evidence": "arXiv 2606.15715 (Barone, Lillo, 2026 preprint): on Hyperliquid in 2025-08..2026-03, "
+                        "visible TWAPs had lower execution costs than comparable hidden metaorders. A study of "
+                        "past averages, not a forecast for this order",
+        })
+    return out
 
 
 class AgentGateway:
@@ -171,8 +201,10 @@ class AgentGateway:
         prob = eligibility_gate(self.cfg)
         return _err(prob) if prob else None
 
-    def _routing(self, notional: float) -> list[str]:
+    def _routing(self, notional: float, intent=None) -> list[str]:
         r = []
+        if intent is not None and intent.algo is Algo.NATIVE_TWAP:
+            r.append("NATIVE_TWAP_NEEDS_HUMAN")   # outside OMX's per-child checks: a human always approves it
         if notional > self.cfg.agent.approval_above_usd:
             r.append("ABOVE_APPROVAL_THRESHOLD")
         if self.budget.would_exceed(notional):
@@ -208,12 +240,15 @@ class AgentGateway:
         except Exception as e:  # engine refusal is data for the agent, not a crash
             return _err(f"ENGINE_ERROR:{type(e).__name__}", message=str(e)[:300])
         gate = self._gate()
+        fee_bound = builder_fee_usd(notional, self.cfg.builder_fee_tenths_bps)
         return {"ok": True, "intent": to_record(intent), "engine_preview": pv,
                 "notional_bound_usd": round(notional, 2),
                 "builder_fee_rate": max_fee_rate_str(self.cfg.builder_fee_tenths_bps),
-                "builder_fee_bound_usd": round(builder_fee_usd(notional, self.cfg.builder_fee_tenths_bps), 4),
-                "would_need_human_approval": bool(self._routing(notional)),
-                "routing_reasons": self._routing(notional),
+                "builder_fee_bound_usd": round(fee_bound, 4),
+                "alternatives": route_alternatives(intent, notional, fee_bound,
+                                                   native_twap_in_omx=self.cfg.policy.allow_native_twap),
+                "would_need_human_approval": bool(self._routing(notional, intent)),
+                "routing_reasons": self._routing(notional, intent),
                 "block_reasons": gate["block_reasons"] if gate else []}
 
     @_serial
@@ -236,7 +271,7 @@ class AgentGateway:
         if iid is not None:
             self.intent_ids.add(iid)              # claimed before anything is sent or queued
         notional = notional_bound_usd(intent, s.mid)
-        reasons = self._routing(notional)
+        reasons = self._routing(notional, intent)
         if not reasons and not self.budget.reserve(notional):     # atomic check+reserve
             reasons = ["AGENT_DAILY_BUDGET_EXCEEDED"]
         if reasons:
@@ -284,6 +319,21 @@ class AgentGateway:
         if _unknown(rep):
             return _err("UNKNOWN_INTENT_ID")
         return {"ok": True, "report": rep, "block_reasons": []}
+
+    @_serial
+    def get_receipt(self, intent_id: str) -> dict:
+        if not re.match(r"^[A-Za-z0-9_-]{1,64}$", intent_id or ""):
+            return _err("BAD_INTENT_ID")
+        fn = getattr(self.engine, "receipt", None)
+        if fn is None:
+            return _err("RECEIPT_UNAVAILABLE")
+        try:
+            rec = fn(intent_id, network=self.cfg.network)
+        except KeyError:
+            return _err("UNKNOWN_INTENT_ID", message="not known to this daemon run; earlier runs: audit log")
+        except Exception as e:
+            return _err(f"ENGINE_ERROR:{type(e).__name__}", message=str(e)[:300])
+        return {"ok": True, "receipt": _plain(rec), "block_reasons": []}
 
     @_serial
     def cancel_order(self, source: str, intent_id: str) -> dict:
@@ -381,7 +431,7 @@ def build_server(gw: AgentGateway, name: str = "omx", instructions: Optional[str
                       pov_rate: float = 0.0, post_only: bool = False, reduce_only: bool = False,
                       max_slippage_bps: float = 50.0, note: str = "") -> dict[str, Any]:
         """Dry run: planned child orders, policy decisions, fee bound, and whether a human must approve.
-        side: buy|sell. algo: market|limit|twap|pov|chase. size in base units. Sends nothing."""
+        side: buy|sell. algo: market|limit|twap|pov|chase|native_twap. size in base units. Sends nothing."""
         return gw.preview_order(src(ctx), order_args(coin, side, size, algo, limit_px, duration_s, slices,
                                                      pov_rate, post_only, reduce_only, max_slippage_bps, note))
 
@@ -411,6 +461,13 @@ def build_server(gw: AgentGateway, name: str = "omx", instructions: Optional[str
     def order_status(intent_id: str) -> dict[str, Any]:
         """Fill progress, average price, cost vs arrival mid, fees and block reasons of an intent."""
         return gw.order_status(intent_id)
+
+    @tool
+    def get_receipt(intent_id: str) -> dict[str, Any]:
+        """Execution receipt of an intent: every child order and fill (venue ids), exchange and builder fees,
+        cost vs arrival mid, self-checks and a sha256 receipt_hash; a finished intent's receipt is anchored in
+        the audit log."""
+        return gw.get_receipt(intent_id)
 
     @tool
     def cancel_order(ctx: Context, intent_id: str) -> dict[str, Any]:
@@ -465,6 +522,9 @@ class DaemonGateway:
 
     def order_status(self, intent_id: str) -> dict:
         return self._call("order_status", intent_id=intent_id)
+
+    def get_receipt(self, intent_id: str) -> dict:
+        return self._call("get_receipt", intent_id=intent_id)
 
     def cancel_order(self, source: str, intent_id: str) -> dict:
         return self._call("cancel_order", source, intent_id=intent_id)

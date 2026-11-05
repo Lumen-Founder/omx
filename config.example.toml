@@ -27,6 +27,9 @@ max_daily_loss_usd = 500.0
 max_data_age_ms = 3000
 max_child_notional_usd = 5000.0
 allow_agent_sources = true
+# Hyperliquid's own TWAP (algo native_twap): suborders are sent by the protocol, each may slip up to 3 %,
+# no builder fee; always needs a human approval when an agent asks for it
+allow_native_twap = false
 
 [policy.max_coin_notional_usd]
 # BTC = 15000.0

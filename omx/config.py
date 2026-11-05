@@ -156,6 +156,8 @@ def _policy(t: dict) -> PolicyConfig:
             raise ConfigError("policy.allowed_coins: must not be empty")
     if "allow_agent_sources" in t:
         kw["allow_agent_sources"] = _bool(t["allow_agent_sources"], "policy.allow_agent_sources")
+    if "allow_native_twap" in t:
+        kw["allow_native_twap"] = _bool(t["allow_native_twap"], "policy.allow_native_twap")
     if "max_coin_notional_usd" in t:
         caps = t["max_coin_notional_usd"]
         if not isinstance(caps, dict):
@@ -215,7 +217,8 @@ def loads(text: str, base_dir: Path = Path(".")) -> OMXConfig:
         raise ConfigError("builder.address must differ from account_address (and from the agent wallet)")
 
     policy = _policy(_table(raw, "policy", set(_POLICY_FLOATS) | {
-        "max_data_age_ms", "allowed_coins", "allow_agent_sources", "max_coin_notional_usd"}))
+        "max_data_age_ms", "allowed_coins", "allow_agent_sources", "allow_native_twap",
+        "max_coin_notional_usd"}))
 
     a = _table(raw, "agent", {"enabled", "approval_above_usd", "daily_budget_usd", "allowed_coins", "approval_ttl_s"})
     agent = AgentSettings(
@@ -322,6 +325,9 @@ max_daily_loss_usd = 500.0
 max_data_age_ms = 3000
 max_child_notional_usd = 5000.0
 allow_agent_sources = true
+# Hyperliquid's own TWAP (algo native_twap): suborders are sent by the protocol, each may slip up to 3 %,
+# no builder fee; always needs a human approval when an agent asks for it
+allow_native_twap = false
 
 [policy.max_coin_notional_usd]
 # BTC = 15000.0

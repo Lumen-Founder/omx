@@ -139,6 +139,22 @@ shows it (open, filled, cancelled, rejected), it is reconciled from that and not
 resent. Your PC's clock should be synced: a clock far behind Hyperliquid's
 shortens the margin.
 
+## Hyperliquid native TWAP
+
+Off by default (`policy.allow_native_twap = false`). With it on, an intent with
+algo `native_twap` becomes one `twapOrder` on your account. The suborders are
+sent by Hyperliquid, not by OMX, so the per-child checks do not run on them:
+OMX checks the whole order once at full size and an estimated largest
+suborder, and the full size stays in the exposure checks while it runs. Each
+suborder may fill up to 3 % from the price at that moment; OMX cannot narrow
+that. An agent's native TWAP always needs a human approval. If the answer to
+the start request is lost, OMX has no TWAP id: it keeps the full size in
+exposure for the running time and reports `NATIVE_TWAP_OUTCOME_UNKNOWN`, but it
+cannot cancel that TWAP; check and stop it in the Hyperliquid app. Started
+TWAPs are recorded in `state_dir/native_twaps.jsonl`, and the next start or a
+kill cancels those this process does not own. Tested against the local
+simulator and recorded exchange answers only; not yet run on testnet.
+
 ## Daily loss limit and deposits
 
 Equity is read every few seconds, the ledger (deposits, withdrawals,

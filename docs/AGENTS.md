@@ -123,20 +123,35 @@ a model, not Hyperliquid's matching engine: see [PAPER.md](PAPER.md).
 | Tool | Effect |
 |---|---|
 | `get_quote(coin)` | Best bid/ask, mid, data age, depth within the policy band |
-| `preview_order(...)` | Dry run: engine plan and policy decisions, notional bound, builder-fee bound, whether a human must approve. Sends nothing. |
+| `preview_order(...)` | Dry run: engine plan and policy decisions, notional bound, builder-fee bound, whether a human must approve, and `alternatives`: other routes for the same intent chosen from the intent alone (for a TWAP or POV of 5 minutes to 7 days and at least $100, Hyperliquid's own TWAP, which carries no OMX builder fee). Sends nothing. |
 | `submit_order(...)` | Sends the intent, or queues it for a human and returns an `approval_id` |
 | `approval_status(approval_id)` | pending / approved / rejected / expired / executed / failed / unknown_after_crash |
 | `order_status(intent_id)` | Fill progress, average price, cost vs arrival mid, fees, block reasons |
+| `get_receipt(intent_id)` | Execution receipt: every child order and fill with venue ids, exchange and builder fees, cost vs arrival mid, self-checks (fills add up, builder fee within the configured rate, every child carried the configured builder, a native TWAP none) and a sha256 `receipt_hash` (TCA markouts sit in `post_trade`, outside the hash, since they fill in after the end); a finished intent's receipt is anchored once in the audit log. `omx receipt <intent_id>` prints the same |
 | `cancel_order(intent_id)` | Cancels an intent created under the same client name only |
 | `kill_switch(reason)` | Stops all new orders and cancels resting ones |
 | `account_summary()` | Equity, day P&L, positions, open orders, remaining agent budget |
 | `policy_limits()` | Read-only view of limits, agent thresholds and builder fee |
 
 Order arguments: `coin`, `side` (buy|sell), `size` (base units), `algo`
-(market|limit|twap|pov|chase), `limit_px`, `duration_s`, `slices`, `pov_rate`,
+(market|limit|twap|pov|chase|native_twap), `limit_px`, `duration_s`, `slices`, `pov_rate`,
 `post_only`, `reduce_only`, `max_slippage_bps` (at most the policy price band),
 `note` (max 200 chars); `submit_order` also takes `client_intent_id` (see
 above). Every result is JSON with `ok` and `block_reasons`.
+
+`native_twap` is Hyperliquid's own TWAP (`twapOrder`): the protocol sends a
+market suborder about every 30 s for `duration_s` (whole minutes, 5 minutes to
+7 days). It is off unless the user sets `policy.allow_native_twap = true`, and
+an agent's native TWAP always waits for a human (`NATIVE_TWAP_NEEDS_HUMAN`),
+whatever its size. OMX checks it once at full size (allowlist, liquidity,
+exposure, leverage, daily loss, data age) and holds the estimated largest
+suborder (3x the even size, the protocol's catch-up) to `max_child_notional_usd`;
+it cannot hold each suborder to the price band: every suborder may slip up to
+3 %, so the notional bound uses at least 3 %. It has no limit price and no
+post-only. It carries no builder field, so OMX earns nothing on it; receipts
+mark it `route: hyperliquid_native_twap`. Cancel and kill stop it with
+`twapCancel`; a restarted daemon cancels native TWAPs an earlier run left
+running.
 
 There is deliberately no tool to unkill, approve, or change policy, builder
 fee or keys, and the daemon refuses those operations from an agent client

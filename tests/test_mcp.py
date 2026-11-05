@@ -155,7 +155,7 @@ def list_tools(gw):
 def test_tool_surface_has_no_write_access_to_limits_or_unkill(env):
     names = set(list_tools(env["gw"]))
     assert names == {"get_quote", "preview_order", "submit_order", "approval_status", "order_status",
-                     "cancel_order", "kill_switch", "account_summary", "policy_limits"}
+                     "get_receipt", "cancel_order", "kill_switch", "account_summary", "policy_limits"}
     assert not any(w in n for n in names for w in ("unkill", "approve", "set", "policy_update", "fee_set", "key"))
 
 

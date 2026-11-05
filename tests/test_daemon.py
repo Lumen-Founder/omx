@@ -81,6 +81,15 @@ def test_daemon_loop_drives_twap_to_completion(cfgfile):
     with daemon_running(cfg, sim_factory(sim)):
         iid = submit(cfgfile, "ETH", "buy", "1.0", "--algo", "twap", "--duration-s", "10", "--slices", "5")
         rep = wait_for(lambda: (r := status(cfgfile, iid))["state"] == "done" and r)
+        code, out, err = cli(cfgfile, "receipt", iid)
+        assert code == 0, err
+        rec = json.loads(out)
+        assert rec["final"] and rec["network"] == "testnet" and len(rec["children"]) == 5
+        assert rec["checks"]["fills_match"] and rec["audit_anchor"]
+        agent = DaemonGateway(cfg.state_dir, default_source="agent:test").get_receipt(iid)
+        assert agent["ok"] and agent["receipt"]["receipt_hash"] == rec["receipt_hash"]
+        assert agent["receipt"]["audit_anchor"] == rec["audit_anchor"]        # anchored once, not per call
+        assert cli(cfgfile, "receipt", "nope")[0] != 0
     assert rep["filled_size"] == pytest.approx(1.0) and rep["children_sent"] == 5
     assert sim.place_calls == 5 and sim.account().position("ETH") == pytest.approx(1.0)
     assert AuditLog.verify(cfg.audit_path)[0]

@@ -145,6 +145,8 @@ def _parser() -> argparse.ArgumentParser:
 
     for name in ("status", "cancel"):
         sub.add_parser(name).add_argument("intent_id")
+    sub.add_parser("receipt", help="execution receipt of an intent (children, fills, fees, checks, hash)"
+                   ).add_argument("intent_id")
     p = sub.add_parser("kill", help="stop new orders and cancel resting OMX orders (works without a daemon)")
     p.add_argument("--reason", default="manual kill from CLI")
     p.add_argument("--all", action="store_true", help="cancel every open order on the account, not only OMX ones")
@@ -462,7 +464,7 @@ def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, 
         _dump(out, rep)
         return 0 if rep.get("state") != "rejected" else 1
 
-    if ns.cmd in ("status", "cancel"):
+    if ns.cmd in ("status", "cancel", "receipt"):
         _dump(out, _ask(cfg, ns.cmd, {"intent_id": ns.intent_id}))
         return 0
 

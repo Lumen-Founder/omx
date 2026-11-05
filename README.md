@@ -5,7 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 OMX is a non-custodial execution engine for Hyperliquid perpetuals. It runs on
-your own machine, turns an order intent (market, limit, TWAP, POV, chase) into
+your own machine, turns an order intent (market, limit, TWAP, POV, chase, or
+Hyperliquid's own TWAP when you turn it on) into
 child orders, checks every child against a pre-trade policy you configure, and
 writes every decision to a hash-chained audit log. A command line and an MCP
 server let a human or an AI agent drive it inside those limits.
@@ -50,7 +51,7 @@ gemini mcp add omx uvx omx-hyperliquid             # Gemini CLI
   `{"mcpServers": {"omx": {"command": "uvx", "args": ["omx-hyperliquid"]}}}`.
   Claude Desktop keeps it in `claude_desktop_config.json` (Settings > Developer >
   Edit Config; Windows `%APPDATA%\Claude\`, macOS `~/Library/Application Support/Claude/`);
-  Cursor in `~/.cursor/mcp.json`. Pin a version with `"omx-hyperliquid@0.1.7"`.
+  Cursor in `~/.cursor/mcp.json`. Pin a version with `"omx-hyperliquid@0.1.8"`.
 - No `uv`? Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`;
   macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`; then open a new terminal. Or
   `pip install omx-hyperliquid` and use `omx-hyperliquid` as the command.
@@ -117,9 +118,11 @@ has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
 Agent SDK, PydanticAI and CrewAI, each checked against this server with the
 framework's own MCP client (demo mode by default).
 
-**Status (v0.1.7):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.8):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
-end to end on Hyperliquid testnet. OMX has not had an external security audit.
+end to end on Hyperliquid testnet. The native TWAP route (v0.1.8, off by default) and execution
+receipts are tested against the local simulator and recorded exchange answers, not yet on testnet.
+OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.
 
 <!-- mcp-name: io.github.Lumen-Founder/omx-hyperliquid-trading -->

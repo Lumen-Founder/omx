@@ -634,6 +634,58 @@ class HyperliquidVenue:
         st = res["response"]["data"]["statuses"][0]
         return st == "success"
 
+    # native TWAP (twapOrder): the protocol sends the suborders; no builder field, no cloid
+
+    def build_twap_action(self, child: ChildOrder, minutes: int, randomize: bool = False) -> dict:
+        """Unsigned twapOrder action, field for field as the SDK's twap order wire."""
+        if child.builder is not None:
+            raise VenueError("a native TWAP carries no builder")
+        if not 5 <= int(minutes) <= 7 * 1440:
+            raise VenueError(f"TWAP_MINUTES:{minutes}")
+        asset, szd = self._asset(child.coin)
+        sz = round_sz(child.size, szd)
+        if sz <= 0:
+            raise VenueError(f"SIZE_ROUNDS_TO_ZERO:{child.size}@{szd}dp")
+        return {"type": "twapOrder", "twap": {"a": asset, "b": child.side is Side.BUY, "s": wire_str(sz),
+                                              "r": bool(child.reduce_only), "m": int(minutes),
+                                              "t": bool(randomize)}}
+
+    def place_twap(self, child: ChildOrder, minutes: int, randomize: bool = False,
+                   abort: Optional[Callable[[], bool]] = None) -> str:
+        """Starts a protocol TWAP; returns its twapId. An answer we do not model raises VenueAmbiguous."""
+        res = self._exchange(self.build_twap_action(child, minutes, randomize), 1, abort)
+        st = ((res.get("response") or {}).get("data") or {}).get("status")
+        if isinstance(st, dict) and "error" in st:
+            raise VenueError(str(st["error"]))
+        if isinstance(st, dict) and isinstance(st.get("running"), dict) and st["running"].get("twapId") is not None:
+            return str(int(st["running"]["twapId"]))
+        raise VenueAmbiguous(f"UNKNOWN_TWAP_STATUS:{st}", self._last_expires)
+
+    def cancel_twap(self, coin: str, twap_id: str) -> bool:
+        """True when the venue stopped it; False when it had already ended (or another error)."""
+        asset, _ = self._asset(coin)
+        res = self._exchange({"type": "twapCancel", "a": asset, "t": int(twap_id)}, 1)
+        st = ((res.get("response") or {}).get("data") or {}).get("status")
+        return st == "success"
+
+    def twap_fills(self, twap_id: str) -> list[Fill]:
+        """Suborder fills of one TWAP (info userTwapSliceFills: the account's most recent 2000)."""
+        rows = self._info({"type": "userTwapSliceFills", "user": self.account_address})
+        out = []
+        for r in rows or []:
+            if str(r.get("twapId")) != str(twap_id):
+                continue
+            f = r.get("fill") or {}
+            out.append(Fill(child_id=f"twap:{twap_id}", coin=f["coin"],
+                            fill_id=str(f["tid"]) if f.get("tid") is not None else "",
+                            side=Side.BUY if f["side"] == "B" else Side.SELL, size=float(f["sz"]),
+                            px=float(f["px"]),
+                            fee_usd=float(f.get("fee") or 0.0) - float(f.get("builderFee") or 0.0),
+                            builder_fee_usd=float(f.get("builderFee") or 0.0),
+                            ts_ms=int(f["time"]), crossed=bool(f.get("crossed", True))))
+        out.sort(key=lambda x: (x.ts_ms, x.fill_id))
+        return out
+
     def fills_since(self, ts_ms: int) -> list[Fill]:
         out, seen, start = [], set(), int(ts_ms)
         for _ in range(50):

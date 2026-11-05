@@ -19,6 +19,14 @@ from ..types import Algo, Intent, Side
 
 EPS = 1e-9
 POV_MIN_INTERVAL_MS = 1_000
+# Hyperliquid docs (Order types, TWAP): running time 5 minutes .. 7 days, $100 minimum total, suborders at
+# least 30 s apart, each limited to 3 % slippage; a suborder that falls behind may grow up to 3x normal size.
+NATIVE_TWAP_MIN_S = 5 * 60
+NATIVE_TWAP_MAX_S = 7 * 86_400
+NATIVE_TWAP_MIN_USD = 100.0
+NATIVE_TWAP_SUBORDER_S = 30
+NATIVE_TWAP_CATCHUP = 3.0
+NATIVE_TWAP_SLIPPAGE_BPS = 300.0
 
 
 @dataclass(frozen=True)
@@ -248,12 +256,19 @@ def validate(intent: Intent) -> Optional[str]:
         return "TWAP_NEEDS_SLICES"
     if intent.algo is Algo.POV and not 0 < intent.pov_rate <= 1:
         return "POV_RATE_OUT_OF_RANGE"
+    if intent.algo is Algo.NATIVE_TWAP:
+        if not NATIVE_TWAP_MIN_S <= intent.duration_s <= NATIVE_TWAP_MAX_S or intent.duration_s % 60:
+            return "NATIVE_TWAP_DURATION: whole minutes, 5 minutes to 7 days"
+        if intent.limit_px is not None or intent.post_only:
+            return "NATIVE_TWAP_NO_LIMIT_PX: Hyperliquid's twapOrder has no limit price or post-only"
     if intent.max_slippage_bps < 0:
         return "NEGATIVE_SLIPPAGE_CAP"
     return None
 
 
 def plan(intent: Intent, st: AlgoState, ctx: Ctx) -> Plan:
+    if intent.algo is Algo.NATIVE_TWAP:          # the protocol slices it; the engine sends it once
+        raise ValueError("native_twap has no OMX child plan")
     return _ALGOS[intent.algo](intent, st, ctx)
 
 
@@ -275,6 +290,12 @@ def schedule(intent: Intent, ctx: Ctx) -> list[dict]:
             done += sz
             out.append({"t_ms": int(k * step), "size": sz, "px": px, "tif": "Alo" if intent.post_only else "Ioc"})
         return out
+    if intent.algo is Algo.NATIVE_TWAP:
+        n = max(1, intent.duration_s // NATIVE_TWAP_SUBORDER_S)
+        px = round_px(ctx.mid, ctx.tick, "near") if ctx.mid else None
+        return [{"t_ms": 0, "size": round_sz(intent.size, ctx.sz_decimals), "px": px, "tif": "Twap",
+                 "note": f"one protocol TWAP: about {n} market suborders 30 s apart, each up to "
+                         f"{NATIVE_TWAP_SLIPPAGE_BPS:g} bps from the price then; px is the mid now"}]
     if intent.algo is Algo.CHASE:
         return [{"t_ms": 0, "size": round_sz(intent.size, ctx.sz_decimals), "px": touch_px(intent, ctx), "tif": "Alo"}]
     # POV: sizes depend on future volume; show the largest single child the bound allows

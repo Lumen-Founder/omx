@@ -221,6 +221,7 @@ AGENT_OPS: dict[str, Callable] = {
     "submit_order": lambda gw, src, args: gw.submit_order(src, args),
     "approval_status": lambda gw, src, approval_id: gw.approval_status(approval_id),
     "order_status": lambda gw, src, intent_id: gw.order_status(intent_id),
+    "get_receipt": lambda gw, src, intent_id: gw.get_receipt(intent_id),
     "cancel_order": lambda gw, src, intent_id: gw.cancel_order(src, intent_id),
     "kill_switch": lambda gw, src, reason: gw.kill_switch(src, reason),
     "account_summary": lambda gw, src: gw.account_summary(),
@@ -257,7 +258,7 @@ class Daemon:
         self._builder_next = 0.0
         self._builder_ok_once = False
         self._human = {"ping": self.h_ping, "preview": self.h_preview, "submit": self.h_submit,
-                       "status": self.h_status, "cancel": self.h_cancel, "kill": self.h_kill, "unkill": self.h_unkill,
+                       "status": self.h_status, "receipt": self.h_receipt, "cancel": self.h_cancel, "kill": self.h_kill, "unkill": self.h_unkill,
                        "approvals.list": self.h_approvals_list, "approvals.get": self.h_approvals_get,
                        "approvals.reject": self.h_approvals_reject, "approvals.approve": self.h_approvals_approve,
                        "eligibility.record": self.h_eligibility_record, "audit.repair": self.h_audit_repair}
@@ -682,6 +683,13 @@ class Daemon:
             rep["message"] = ("submitted to an earlier daemon run (it restarted since): state unknown here, it may "
                               "have filled; check the audit log (`intent_done`) and the venue. " + rep.get("message", ""))
         return rep
+
+    def h_receipt(self, intent_id: str) -> dict:
+        try:
+            return self.engine.receipt(str(intent_id), network=self.cfg.network)
+        except KeyError:
+            raise ValueError(f"UNKNOWN_INTENT_ID: {intent_id} is not known to this daemon run; "
+                             "earlier runs are in the audit log") from None
 
     def h_cancel(self, intent_id: str) -> dict:
         return _rep(self.engine.cancel(str(intent_id)))

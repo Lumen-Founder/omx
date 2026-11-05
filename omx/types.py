@@ -25,6 +25,7 @@ class Algo(str, Enum):
     TWAP = "twap"          # equal slices over a duration
     POV = "pov"            # slices sized to a share of observed volume
     CHASE = "chase"        # post-only at touch, re-priced until filled or capped
+    NATIVE_TWAP = "native_twap"   # Hyperliquid's own TWAP (twapOrder): the protocol slices it; no builder fee
 
 
 @dataclass(frozen=True)
