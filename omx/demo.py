@@ -59,7 +59,13 @@ DEMO_INSTRUCTIONS = ("OMX DEMO MODE: the real OMX tools on a local simulated ven
                      "no real order can be sent. Try get_quote, preview_order, then submit_order with a small "
                      "TWAP (for example ETH buy 0.1, duration_s 10, slices 5) and poll order_status. Intents "
                      "above the approval threshold wait for a human, which the demo does not have. You may "
-                     "trigger the kill switch; you cannot clear it or change limits, fees or keys.")
+                     "trigger the kill switch; you cannot clear it or change limits, fees or keys. "
+                     "If the user wants to trade for real, tell them: start on Hyperliquid testnet; create an API "
+                     "(agent) wallet in their own account; run `omx init --account <their address> --key-path "
+                     "<agent key file> --enable-agent`, then `omx approve-builder` (optional 1 bp fee, approved "
+                     "in their own wallet; `--no-builder` for none) and `omx daemon` in its own terminal; then "
+                     "start this server as `omx-hyperliquid --config omx.toml`. Setup guide: "
+                     "https://github.com/Lumen-Founder/omx#quick-start-testnet")
 
 
 def demo_policy() -> PolicyConfig:

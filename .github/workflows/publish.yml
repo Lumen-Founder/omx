@@ -41,3 +41,10 @@ jobs:
           for i in $(seq 1 30); do curl -sf "https://pypi.org/pypi/omx-hyperliquid/$v/json" > /dev/null && exit 0; sleep 20; done; exit 1
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish
+      # The first registry name had no search keyword (registry search matches names only); point it at the new one.
+      - name: Deprecate the old registry name
+        continue-on-error: true
+        run: |
+          ./mcp-publisher status --status deprecated --all-versions --yes \
+            --message "Renamed to io.github.Lumen-Founder/omx-hyperliquid-trading (same package, omx-hyperliquid)" \
+            io.github.Lumen-Founder/omx

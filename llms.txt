@@ -1,0 +1,17 @@
+# OMX
+
+> Non-custodial execution engine for Hyperliquid perpetuals with an MCP server for AI agents. It runs on the user's machine, signs only with a Hyperliquid API wallet that cannot withdraw, checks every child order against a pre-trade policy, sends large intents to a human for approval, and logs every decision in a hash-chained audit log. `uvx omx-hyperliquid` with no config is a keyless demo on a simulated venue.
+
+PyPI: `omx-hyperliquid`. Official MCP Registry: `io.github.Lumen-Founder/omx-hyperliquid-trading`. License: MIT. Pre-1.0, testnet end-to-end tested, no external security audit. Not available in the United States, Ontario or sanctioned territories. Optional 1 bp builder fee, charged only after the user approves it from their own wallet.
+
+## Docs
+
+- [README](https://github.com/Lumen-Founder/omx/blob/main/README.md): install, demo, quick start, controls, builder fee
+- [Install guide for agents](https://github.com/Lumen-Founder/omx/blob/main/llms-install.md): demo setup, then what to tell the user for real trading
+- [MCP tools and approvals](https://github.com/Lumen-Founder/omx/blob/main/docs/AGENTS.md): the 9 tools, thresholds, kill switch, trust boundary
+- [Security model](https://github.com/Lumen-Founder/omx/blob/main/docs/SECURITY.md)
+- [Fees](https://github.com/Lumen-Founder/omx/blob/main/docs/FEES.md)
+
+## Examples
+
+- [omx-integrations](https://github.com/Lumen-Founder/omx-integrations): OpenAI Agents SDK, LangChain, Claude Agent SDK, PydanticAI, CrewAI

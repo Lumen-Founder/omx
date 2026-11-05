@@ -1,0 +1,11 @@
+{
+  "name": "omx",
+  "version": "0.1.4",
+  "description": "Non-custodial Hyperliquid execution for AI agents: quote, preview and submit orders inside limits you set. Keyless demo by default; set OMX_CONFIG to trade with your own account.",
+  "mcpServers": {
+    "omx": {
+      "command": "uvx",
+      "args": ["omx-hyperliquid"]
+    }
+  }
+}

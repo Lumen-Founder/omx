@@ -4,12 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omx-hyperliquid"               # distribution name (PyPI); the import package is `omx`
-version = "0.1.3"
+version = "0.1.4"
 description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 dependencies = ["hyperliquid-python-sdk==0.20.0", "eth-account", "msgpack", "requests", "mcp>=2.3"]
+keywords = ["hyperliquid", "mcp", "mcp-server", "model-context-protocol", "ai-agents", "trading", "perpetuals",
+            "twap", "execution", "non-custodial"]
+classifiers = ["License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3",
+               "Operating System :: OS Independent", "Topic :: Office/Business :: Financial :: Investment"]
+
+[project.urls]
+Homepage = "https://github.com/Lumen-Founder/omx"
+Source = "https://github.com/Lumen-Founder/omx"
+Issues = "https://github.com/Lumen-Founder/omx/issues"
+Examples = "https://github.com/Lumen-Founder/omx-integrations"
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -17,7 +27,7 @@ test = ["pytest"]
 [project.scripts]
 omx = "omx.cli:main"
 omx-mcp = "omx.mcp_server:main"
-omx-hyperliquid = "omx.mcp_server:main"   # what `uvx omx-hyperliquid` runs (MCP Registry entry)
+omx-hyperliquid = "omx.mcp_server:hyperliquid_main"   # what `uvx omx-hyperliquid` runs; no config -> demo
 
 [tool.setuptools.packages.find]
 include = ["omx*"]

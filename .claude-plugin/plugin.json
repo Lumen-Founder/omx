@@ -1,0 +1,20 @@
+{
+  "name": "omx",
+  "version": "0.1.4",
+  "description": "Non-custodial Hyperliquid execution for AI agents over MCP: quote, preview and submit orders inside limits you set, with human approval, a kill switch and an audit log. Starts as a keyless demo on a simulated venue; set OMX_CONFIG to trade with your own account.",
+  "author": {
+    "name": "Lumen-Founder",
+    "url": "https://github.com/Lumen-Founder"
+  },
+  "homepage": "https://github.com/Lumen-Founder/omx",
+  "repository": "https://github.com/Lumen-Founder/omx",
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "keywords": ["hyperliquid", "trading", "mcp", "execution", "twap", "non-custodial"],
+  "mcpServers": {
+    "omx": {
+      "command": "uvx",
+      "args": ["omx-hyperliquid"]
+    }
+  }
+}

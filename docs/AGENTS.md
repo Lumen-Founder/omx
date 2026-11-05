@@ -92,6 +92,11 @@ adapter or a signer and opens no network connection. Every answer carries
 the threshold stays `pending` and expires; the message says so. State is kept
 in a temporary directory deleted on exit, nothing in the working directory.
 Use it to learn the tool surface; results say nothing about real fills.
+`omx-hyperliquid` with no `--config`, no `OMX_CONFIG` and no `./omx.toml`
+serves the same demo (it says so on stderr), so a client that installs the
+server with no arguments, from a registry or an install link, gets working
+tools. A named config that is missing stays an error, and `omx-mcp` always
+needs a config.
 
 ## Tools
 

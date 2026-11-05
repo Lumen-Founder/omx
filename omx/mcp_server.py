@@ -35,10 +35,12 @@ import argparse
 import dataclasses
 import functools
 import json
+import os
 import re
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from mcp.server.mcpserver import Context, MCPServer
@@ -507,9 +509,25 @@ def serve(cfg: OMXConfig) -> None:
     build_server(DaemonGateway(cfg.state_dir)).run("stdio")
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+NO_CONFIG_DEMO_NOTE = ("omx-hyperliquid: no --config, no $OMX_CONFIG and no ./omx.toml, so this is the DEMO "
+                       "(simulated venue, nothing real is traded). To trade: `omx init`, `omx daemon`, then "
+                       "`omx-hyperliquid --config omx.toml`.\n")
+
+
+def _no_config_given(config_arg: Optional[str]) -> bool:
+    return config_arg is None and not os.environ.get("OMX_CONFIG") and not Path("omx.toml").exists()
+
+
+def hyperliquid_main(argv: Optional[list[str]] = None) -> int:
+    """`omx-hyperliquid`, the command MCP registries and install links run. With no config anywhere it
+    serves the demo instead of exiting, so a client that installs it with no arguments gets working
+    tools. A config that is named but missing is still an error (main)."""
+    return main(argv, prog="omx-hyperliquid", no_config_demo=True)
+
+
+def main(argv: Optional[list[str]] = None, prog: str = "omx-mcp", no_config_demo: bool = False) -> int:
     from .cli import load_config_or_exit
-    ap = argparse.ArgumentParser(prog="omx-mcp", description="OMX MCP server (stdio), a client of `omx daemon`")
+    ap = argparse.ArgumentParser(prog=prog, description="OMX MCP server (stdio), a client of `omx daemon`")
     ap.add_argument("--config", default=None)
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--inspect", action="store_true",
@@ -523,6 +541,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     if ns.inspect:
         build_server(InspectGateway()).run("stdio")
         return 0
+    if no_config_demo and _no_config_given(ns.config):
+        from .demo import serve_demo
+        sys.stderr.write(NO_CONFIG_DEMO_NOTE)
+        return serve_demo()
     cfg = load_config_or_exit(ns.config, sys.stderr)
     if cfg is None:
         return 2

@@ -1,0 +1,17 @@
+{
+  "name": "omx",
+  "owner": {
+    "name": "Lumen-Founder",
+    "url": "https://github.com/Lumen-Founder"
+  },
+  "metadata": {
+    "description": "OMX: non-custodial Hyperliquid execution engine with an MCP server for AI agents."
+  },
+  "plugins": [
+    {
+      "name": "omx",
+      "source": "./",
+      "description": "Hyperliquid execution tools for AI agents (keyless demo by default)."
+    }
+  ]
+}

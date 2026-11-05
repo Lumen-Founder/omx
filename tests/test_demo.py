@@ -199,6 +199,33 @@ def test_omx_demo_and_omx_mcp_demo_run_the_same_server_without_a_config(cwd, mon
     assert ran == ["demo", "demo"] and list(cwd.iterdir()) == []
 
 
+def test_omx_hyperliquid_without_any_config_serves_the_demo_but_omx_mcp_does_not(cwd, monkeypatch, capsys):
+    import omx.demo
+    from omx import mcp_server
+    ran = []
+    monkeypatch.setattr(omx.demo, "serve_demo", lambda err=None: ran.append("demo") or 0)
+    monkeypatch.delenv("OMX_CONFIG", raising=False)
+    assert mcp_server.hyperliquid_main([]) == 0
+    assert ran == ["demo"] and "DEMO" in capsys.readouterr().err
+    assert mcp_server.main([]) == 2                      # omx-mcp: a missing config stays an error
+    assert ran == ["demo"]
+
+
+def test_omx_hyperliquid_with_a_named_config_never_falls_back_to_the_demo(cwd, monkeypatch):
+    import omx.demo
+    from omx import mcp_server
+    ran = []
+    monkeypatch.setattr(omx.demo, "serve_demo", lambda err=None: ran.append("demo") or 0)
+    monkeypatch.delenv("OMX_CONFIG", raising=False)
+    assert mcp_server.hyperliquid_main(["--config", "missing.toml"]) == 2
+    monkeypatch.setenv("OMX_CONFIG", "missing.toml")
+    assert mcp_server.hyperliquid_main([]) == 2
+    monkeypatch.delenv("OMX_CONFIG")
+    (cwd / "omx.toml").write_text("not = [valid", encoding="utf-8")
+    assert mcp_server.hyperliquid_main([]) == 2         # ./omx.toml exists: it is used, never replaced by the demo
+    assert ran == []
+
+
 def test_stdio_process_answers_a_tool_call(tmp_path):
     from mcp import ClientSession
     from mcp.client.stdio import StdioServerParameters, stdio_client

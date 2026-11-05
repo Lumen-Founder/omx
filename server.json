@@ -1,18 +1,26 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.Lumen-Founder/omx",
+  "name": "io.github.Lumen-Founder/omx-hyperliquid-trading",
   "title": "OMX for Hyperliquid",
-  "description": "Non-custodial Hyperliquid execution for AI agents: pre-trade limits, kill switch, audit log.",
+  "description": "Hyperliquid execution for AI agents: limits, human approval, kill switch. Keyless demo.",
+  "websiteUrl": "https://github.com/Lumen-Founder/omx",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/Lumen-Founder/omx/main/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
   "repository": {
     "url": "https://github.com/Lumen-Founder/omx",
     "source": "github"
   },
-  "version": "0.1.3",
+  "version": "0.1.4",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "omx-hyperliquid",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -20,8 +28,8 @@
       "environmentVariables": [
         {
           "name": "OMX_CONFIG",
-          "description": "Path to your omx.toml (written by `omx init`). The daemon (`omx daemon`) must be running.",
-          "isRequired": true,
+          "description": "Path to your omx.toml (from `omx init`; run `omx daemon` too). Leave empty for the keyless demo.",
+          "isRequired": false,
           "format": "filepath"
         }
       ]

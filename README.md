@@ -1,4 +1,4 @@
-# OMX
+# OMX: Hyperliquid execution for AI agents (MCP)
 
 OMX is a non-custodial execution engine for Hyperliquid perpetuals. It runs on
 your own machine, turns an order intent (market, limit, TWAP, POV, chase) into
@@ -9,12 +9,61 @@ server let a human or an AI agent drive it inside those limits.
 OMX makes no claim about trading performance or profit. It is execution
 plumbing with guard rails.
 
-**Status (v0.1.3):** pre-1.0. The full path (agent intent -> policy -> signed
+## Try it now: no key, no account
+
+One click installs the MCP server in demo mode (a simulated venue in its own
+process; nothing real can be traded):
+
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=omx&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJvbXgtaHlwZXJsaXF1aWQiXX0%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_OMX-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522omx%2522%252C%2522type%2522%253A%2522stdio%2522%252C%2522command%2522%253A%2522uvx%2522%252C%2522args%2522%253A%255B%2522omx-hyperliquid%2522%255D%257D)
+[![Add to LM Studio](https://files.lmstudio.ai/deeplink/mcp-install-light.svg)](https://lmstudio.ai/install-mcp?name=omx&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJvbXgtaHlwZXJsaXF1aWQiXX0%3D)
+[![Install in Goose](https://block.github.io/goose/img/extension-install-dark.svg)](https://block.github.io/goose/extension?cmd=uvx&arg=omx-hyperliquid&id=omx&name=OMX&description=Hyperliquid%20execution%20for%20AI%20agents%20%28keyless%20demo%20by%20default%29)
+[![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=omx&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22omx-hyperliquid%22%5D%7D)
+
+Or one line:
+
+```
+claude mcp add omx -- uvx omx-hyperliquid          # Claude Code
+codex mcp add omx -- uvx omx-hyperliquid           # OpenAI Codex CLI
+gemini mcp add omx uvx omx-hyperliquid             # Gemini CLI
+```
+
+- Claude Code plugin: `/plugin marketplace add Lumen-Founder/omx`, then `/plugin install omx@omx`.
+- Gemini CLI extension: `gemini extensions install https://github.com/Lumen-Founder/omx`.
+- Any other MCP client (Claude Desktop, Cline, Windsurf, Zed, JetBrains, ...):
+  `{"mcpServers": {"omx": {"command": "uvx", "args": ["omx-hyperliquid"]}}}`.
+- No `uv`? Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`;
+  macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`; then open a new terminal. Or
+  `pip install omx-hyperliquid` and use `omx-hyperliquid` as the command.
+
+With no `--config`, no `OMX_CONFIG` and no `./omx.toml`, `omx-hyperliquid` runs
+the demo (`--demo` forces it). The engine, policy checks, approval threshold,
+agent budget, kill switch and audit log are the real code; prices are a
+random-walk model, not Hyperliquid data. Every answer carries `"demo": true`.
+State lives in a temporary directory that is deleted on exit. A config that is
+named but missing is an error, never a silent demo.
+
+Then ask the agent to quote ETH, preview a small TWAP and submit it (for
+example buy 0.1 ETH over 10 s in 5 slices), and poll `order_status` until it
+is `done`. An intent above 1,000 USD returns an `approval_id` and waits for a
+human; the demo has no approval step, so it stays pending and expires. After
+`kill_switch` every new order is refused until the server restarts.
+
+To trade with your own account, follow [Quick start](#quick-start-testnet) and
+give the same server your config: set `OMX_CONFIG` to its path in the client's
+server settings, or add `--config <path>`.
+
+Agent frameworks: [omx-integrations](https://github.com/Lumen-Founder/omx-integrations)
+has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
+Agent SDK, PydanticAI and CrewAI, each checked against this server with the
+framework's own MCP client (demo mode by default).
+
+**Status (v0.1.4):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.
 
-<!-- mcp-name: io.github.Lumen-Founder/omx -->
+<!-- mcp-name: io.github.Lumen-Founder/omx-hyperliquid-trading -->
 
 ## Eligibility
 
@@ -57,53 +106,6 @@ The commands below also work as `python -m omx.cli ...` from a checkout.
 Requires Python 3.11+ (`tomllib`; developed on 3.12). The MCP server uses the
 official `mcp` Python SDK 2.x. The live Hyperliquid venue also needs
 `eth_account` for signing.
-
-## Try it in 60 seconds (no keys)
-
-`omx-hyperliquid --demo` runs the MCP server on a simulated venue inside its
-own process. No config, key, account, daemon or network. The engine, policy
-checks, approval threshold, agent budget, kill switch and audit log are the
-real code; prices are a random-walk model, not Hyperliquid data. Nothing real
-can be traded. Every answer carries `"demo": true`. State lives in a temporary
-directory that is deleted on exit.
-
-```
-pip install omx-hyperliquid
-```
-
-Claude Desktop (`claude_desktop_config.json`; use the full path to
-`omx-hyperliquid` if it is not on PATH):
-
-```json
-{
-  "mcpServers": {
-    "omx-demo": {
-      "command": "omx-hyperliquid",
-      "args": ["--demo"]
-    }
-  }
-}
-```
-
-Claude Code:
-
-```
-claude mcp add omx-demo -- omx-hyperliquid --demo
-```
-
-Any other MCP client: run `omx-hyperliquid --demo` (or `uvx omx-hyperliquid
---demo`, or `omx demo`) as a stdio server.
-
-Then ask the agent to quote ETH, preview a small TWAP and submit it (for
-example buy 0.1 ETH over 10 s in 5 slices), and poll `order_status` until it
-is `done`. An intent above 1,000 USD returns an `approval_id` and waits for a
-human; the demo has no approval step, so it stays pending and expires. After
-`kill_switch` every new order is refused until the server restarts.
-
-Agent frameworks: [omx-integrations](https://github.com/Lumen-Founder/omx-integrations)
-has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
-Agent SDK, PydanticAI and CrewAI, each checked against this server with the
-framework's own MCP client (demo mode by default).
 
 ## Quick start (testnet)
 
