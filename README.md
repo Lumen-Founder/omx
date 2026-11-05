@@ -100,6 +100,11 @@ is `done`. An intent above 1,000 USD returns an `approval_id` and waits for a
 human; the demo has no approval step, so it stays pending and expires. After
 `kill_switch` every new order is refused until the server restarts.
 
+Agent frameworks: [omx-integrations](https://github.com/Lumen-Founder/omx-integrations)
+has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
+Agent SDK, PydanticAI and CrewAI, each checked against this server with the
+framework's own MCP client (demo mode by default).
+
 ## Quick start (testnet)
 
 OMX runs as one long-lived process, `omx daemon`, which owns the engine (the
