@@ -508,6 +508,9 @@ def test_submit_timeout_prints_intent_id_and_status_hint(tmp_path, monkeypatch):
             time.sleep(0.02)
     th = threading.Thread(target=half_daemon, daemon=True)
     th.start()
+    deadline = time.time() + 10                       # slow CI runners: wait for the first heartbeat
+    while not ipc.daemon_alive(cfg.state_dir) and time.time() < deadline:
+        time.sleep(0.01)
     try:
         code, _, err = cli(p, "submit", "ETH", "buy", "1", "--yes", "--intent-id", "hu-timeout1")
     finally:
