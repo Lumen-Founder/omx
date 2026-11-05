@@ -164,6 +164,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout-s", type=float, default=900.0, help="stop serving the page after this long")
     sub.add_parser("doctor", help="read-only checks of config, key, account, agent, builder approval, daemon")
     sub.add_parser("mcp", help="run the MCP server for AI agents on stdio (a client of the daemon)")
+    sub.add_parser("demo", help="run the MCP server on stdio with a simulated venue: no config, key, daemon or "
+                                "network; nothing real is traded")
     return ap
 
 
@@ -323,6 +325,10 @@ def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, 
     if ns.cmd == "doctor":                 # its own config check comes first, as one of the checks
         from .doctor import run_doctor
         return run_doctor(config_path(ns.config), out, transport_factory)
+
+    if ns.cmd == "demo":                   # needs no config: everything lives in a temporary directory
+        from .demo import serve_demo
+        return serve_demo(err)
 
     if ns.cmd == "init":
         path = config_path(ns.config)

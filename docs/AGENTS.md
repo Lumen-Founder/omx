@@ -82,6 +82,17 @@ server. `python -m omx.cli --config <path> mcp` does the same.
 daemon or key: it lists the tools and refuses every call with `NOT_CONFIGURED`.
 MCP directories use it (the `Dockerfile` runs it); it cannot trade.
 
+`omx-mcp --demo` (or `omx-hyperliquid --demo`, or `omx demo`) also needs no
+config, daemon or key, but answers every call. It runs the real engine,
+gateway, policy, approval threshold, agent budget, kill switch and audit log in
+one process on the local simulator (`omx/venue/sim.py`), stepped every 200 ms
+like the daemon, so a TWAP fills over time. It never builds the Hyperliquid
+adapter or a signer and opens no network connection. Every answer carries
+`"demo": true` and a `demo_note`. There is no approval tool, so an intent above
+the threshold stays `pending` and expires; the message says so. State is kept
+in a temporary directory deleted on exit, nothing in the working directory.
+Use it to learn the tool surface; results say nothing about real fills.
+
 ## Tools
 
 | Tool | Effect |

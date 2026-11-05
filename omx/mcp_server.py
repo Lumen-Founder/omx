@@ -27,6 +27,7 @@ across restarts) before anything is sent or queued. A second submit with the sam
 returns the existing intent's id and state (status "duplicate") and sends nothing.
 
 Run: python -m omx.cli mcp --config omx.toml   (or python -m omx.mcp_server --config omx.toml)
+Try without a key, account or daemon: omx-mcp --demo (simulated venue in this process, see omx.demo)
 """
 from __future__ import annotations
 
@@ -343,11 +344,13 @@ class AgentGateway:
 
 # ---------------------------------------------------------------- MCP wiring
 
-def build_server(gw: AgentGateway, name: str = "omx"):
-    srv = MCPServer(name, instructions=(
-        "OMX executes Hyperliquid orders inside limits the human set. Preview before submitting. "
-        "Large or over-budget intents return an approval_id and wait for a human. You may trigger the "
-        "kill switch; you cannot clear it or change limits, fees or keys."))
+SERVER_INSTRUCTIONS = ("OMX executes Hyperliquid orders inside limits the human set. Preview before submitting. "
+                       "Large or over-budget intents return an approval_id and wait for a human. You may trigger "
+                       "the kill switch; you cannot clear it or change limits, fees or keys.")
+
+
+def build_server(gw: AgentGateway, name: str = "omx", instructions: Optional[str] = None):
+    srv = MCPServer(name, instructions=instructions or SERVER_INSTRUCTIONS)
 
     def src(ctx: Context) -> str:
         try:
@@ -508,9 +511,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     from .cli import load_config_or_exit
     ap = argparse.ArgumentParser(prog="omx-mcp", description="OMX MCP server (stdio), a client of `omx daemon`")
     ap.add_argument("--config", default=None)
-    ap.add_argument("--inspect", action="store_true",
-                    help="list the tools without a config or daemon; every call is refused (for MCP directories)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--inspect", action="store_true",
+                      help="list the tools without a config or daemon; every call is refused (for MCP directories)")
+    mode.add_argument("--demo", action="store_true",
+                      help="try the tools on a simulated venue in this process: no config, key, daemon or network")
     ns = ap.parse_args(argv)
+    if ns.demo:
+        from .demo import serve_demo
+        return serve_demo()
     if ns.inspect:
         build_server(InspectGateway()).run("stdio")
         return 0

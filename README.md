@@ -9,7 +9,7 @@ server let a human or an AI agent drive it inside those limits.
 OMX makes no claim about trading performance or profit. It is execution
 plumbing with guard rails.
 
-**Status (v0.1.2):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.3):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.
@@ -57,6 +57,48 @@ The commands below also work as `python -m omx.cli ...` from a checkout.
 Requires Python 3.11+ (`tomllib`; developed on 3.12). The MCP server uses the
 official `mcp` Python SDK 2.x. The live Hyperliquid venue also needs
 `eth_account` for signing.
+
+## Try it in 60 seconds (no keys)
+
+`omx-hyperliquid --demo` runs the MCP server on a simulated venue inside its
+own process. No config, key, account, daemon or network. The engine, policy
+checks, approval threshold, agent budget, kill switch and audit log are the
+real code; prices are a random-walk model, not Hyperliquid data. Nothing real
+can be traded. Every answer carries `"demo": true`. State lives in a temporary
+directory that is deleted on exit.
+
+```
+pip install omx-hyperliquid
+```
+
+Claude Desktop (`claude_desktop_config.json`; use the full path to
+`omx-hyperliquid` if it is not on PATH):
+
+```json
+{
+  "mcpServers": {
+    "omx-demo": {
+      "command": "omx-hyperliquid",
+      "args": ["--demo"]
+    }
+  }
+}
+```
+
+Claude Code:
+
+```
+claude mcp add omx-demo -- omx-hyperliquid --demo
+```
+
+Any other MCP client: run `omx-hyperliquid --demo` (or `uvx omx-hyperliquid
+--demo`, or `omx demo`) as a stdio server.
+
+Then ask the agent to quote ETH, preview a small TWAP and submit it (for
+example buy 0.1 ETH over 10 s in 5 slices), and poll `order_status` until it
+is `done`. An intent above 1,000 USD returns an `approval_id` and waits for a
+human; the demo has no approval step, so it stays pending and expires. After
+`kill_switch` every new order is refused until the server restarts.
 
 ## Quick start (testnet)
 
