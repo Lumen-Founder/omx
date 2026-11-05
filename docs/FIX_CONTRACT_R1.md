@@ -1,0 +1,21 @@
+# Fix round R1 — contracts between the three fix lanes (2026-11-05)
+
+Source: independent review, `_review/test_review_findings.py` (16 failing tests, F1–F10).
+Each lane owns its files; cross-lane calls use exactly these signatures.
+
+## Ownership
+- Lane X (engine + adapter): `omx/engine.py`, `omx/venue/hyperliquid.py`, `omx/venue/sim.py`, `omx/venue/base.py`, `omx/types.py` (additive only), `omx/policy.py`, `omx/tca.py`, `omx/algos/*`, tests for those.
+- Lane Y (daemon + interfaces): new `omx/daemon.py`, `omx/ipc.py`; `omx/cli.py`, `omx/mcp_server.py`, `omx/approvals.py`, `omx/config.py`, `omx/engine_api.py`, docs README/AGENTS, tests for those.
+- Lane Z (audit + eligibility): `omx/audit.py`, `omx/eligibility.py`, `omx/onboarding.py`, docs SECURITY, tests for those.
+
+## Contracts
+1. **cloid scheme (X)**: `cloid = "0x" + "4f4d5801" + sha256(child_id)[:24 hex]`. `is_omx_cloid(cloid)` in `omx/venue/hyperliquid.py`. Every OMX order on the account is identifiable after restarts.
+2. **Abortable place (X)**: `Venue.place(child, abort: Callable[[], bool] | None = None) -> str`. The adapter calls `abort()` after rate-limit wait and signing, immediately before the HTTP send; if true it raises `VenueAborted` (subclass of `VenueError`) and sends nothing. The engine passes `lambda: kill switch active`.
+3. **Ambiguous outcomes (X)**: on timeout / connection error / 5xx from `/exchange`, the child becomes `unknown`, stays in exposure at full size, and is resolved through `Venue.order_status(child_id) -> dict(state="open|filled|cancelled|rejected|unknown", filled_sz=float, oid=str|None)` (HL `orderStatus` by cloid) before anything is resent. A resend reuses the same child_id/cloid.
+4. **Fills (X)**: `Fill.fill_id: str = ""` (HL `tid`). Engine dedupes by fill_id; cursor starts at venue time minus 60 s; place responses with `filled.totalSz` are applied.
+5. **Marks and flows (X)**: `Venue.mark_prices() -> dict[str, float]` (all coins, from `metaAndAssetCtxs`); policy gets marks for every coin with a position or resting order. `Venue.external_flows_usd(start_ms) -> float` (HL `userNonFundingLedgerUpdates`: deposits − withdrawals and transfers in/out of the perp account) feeds `AccountState.day_net_flows_usd`.
+6. **Kill (X)**: `Engine.kill(reason, scope="omx")` cancels every open order on the account whose cloid is an OMX cloid (not just in-memory children); `scope="all"` cancels every open order. Engine start: if the kill file is set, or orphan OMX orders exist from a previous run, it cancels them and records it. `Engine.step()` re-reads the kill file every call. Engine is NOT thread-safe: only one thread may call it (Y guarantees).
+7. **Views (X)**: `Engine.snapshot(coin)`, `Engine.account_view() -> dict` (equity, positions, open orders, day_pnl_usd computed with the engine's day start and flows).
+8. **Daemon (Y)**: `omx daemon` owns the single Engine, the single AuditLog writer and the approvals executor; loop `step()` every 200 ms; single instance via `state_dir/daemon.lock`; heartbeat `state_dir/daemon.heartbeat` (venue-independent wall time). CLI and MCP are thin clients over a file inbox/outbox in `state_dir/ipc/` (atomic rename, request id, timeout). Agent budget check+reserve is atomic inside the daemon. If the daemon heartbeat is older than 5 s, `omx kill` writes the kill file AND builds a one-shot engine via `from_config` and calls `kill(scope)` directly.
+9. **Audit (Z)**: cross-process exclusive file lock around append; inside the lock re-read the last line's hash; a truncated final line is reported by `verify` as `TRUNCATED_TAIL` (distinct from tamper) and `AuditLog.repair(path)` moves the partial tail to `<path>.tail-<ts>` and appends a `repair` record. `child_ack` becomes durable.
+10. **Eligibility (Z)**: region required when country is CA or UA; residence and current location asked separately; attestation expires (default 30 days); blocked attestations are kept in an append-only history and audited, never overwritten. `Engine`/`from_config` must refuse to build without a valid, unexpired attestation — Z provides `eligibility.require_valid(state_dir, now_s)` and X calls it from `from_config` (X adds the call; Z owns the function).

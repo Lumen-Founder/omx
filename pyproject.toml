@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omx"
+version = "0.1.0"
+description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = ["hyperliquid-python-sdk==0.20.0", "eth-account", "msgpack", "requests", "mcp>=2.3"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+omx = "omx.cli:main"
+omx-mcp = "omx.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["omx*"]
