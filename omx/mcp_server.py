@@ -482,6 +482,24 @@ class DaemonGateway:
         return self._call("policy_limits")
 
 
+INSPECT_MESSAGE = ("This is OMX in inspect-only mode (no config, no daemon, no key): it lists its tools and refuses "
+                   "every call. To trade, run `omx init`, `omx daemon`, then `omx-mcp --config omx.toml`.")
+
+
+class InspectGateway(DaemonGateway):
+    """The tool surface with no config, state dir, daemon or key: every call is refused and nothing is written
+    (directories such as Glama start a server only to list its tools)."""
+
+    def __init__(self):
+        super().__init__(state_dir=None)
+
+    def _call(self, op: str, source: Optional[str] = None, **args) -> dict:
+        return _err("NOT_CONFIGURED", message=INSPECT_MESSAGE)
+
+    def kill_switch(self, source: str, reason: str) -> dict:
+        return _err("NOT_CONFIGURED", message=INSPECT_MESSAGE)
+
+
 def serve(cfg: OMXConfig) -> None:
     build_server(DaemonGateway(cfg.state_dir)).run("stdio")
 
@@ -490,7 +508,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     from .cli import load_config_or_exit
     ap = argparse.ArgumentParser(prog="omx-mcp", description="OMX MCP server (stdio), a client of `omx daemon`")
     ap.add_argument("--config", default=None)
+    ap.add_argument("--inspect", action="store_true",
+                    help="list the tools without a config or daemon; every call is refused (for MCP directories)")
     ns = ap.parse_args(argv)
+    if ns.inspect:
+        build_server(InspectGateway()).run("stdio")
+        return 0
     cfg = load_config_or_exit(ns.config, sys.stderr)
     if cfg is None:
         return 2

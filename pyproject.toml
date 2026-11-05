@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omx-hyperliquid"               # distribution name (PyPI); the import package is `omx`
-version = "0.1.1"
+version = "0.1.2"
 description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
 readme = "README.md"
 license = {text = "MIT"}

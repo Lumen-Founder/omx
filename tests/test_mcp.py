@@ -336,3 +336,17 @@ def test_against_real_engine_with_sim_venue(tmp_path):
     call(gw, "kill_switch", {"reason": "test"})
     assert is_killed(cfg.state_dir) and eng.killed
     assert AuditLog.verify(cfg.audit_path)[0]
+
+
+def test_inspect_mode_lists_every_tool_and_refuses_every_call(tmp_path, monkeypatch, env):
+    from omx.mcp_server import InspectGateway
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    gw = InspectGateway()
+    assert list_tools(gw) == list_tools(env["gw"])                        # the same tool surface
+    for tool, args in [("get_quote", {"coin": "ETH"}), ("account_summary", {}), ("policy_limits", {}),
+                       ("kill_switch", {"reason": "inspect test"}), ("order_status", {"intent_id": "x"})]:
+        r = call(gw, tool, args)
+        assert r["ok"] is False and "NOT_CONFIGURED" in r["block_reasons"], (tool, r)
+    assert list(cwd.iterdir()) == []                                       # nothing written

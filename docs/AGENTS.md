@@ -78,6 +78,10 @@ claude mcp add omx -- C:/path/to/OMX/.venv/Scripts/python.exe -m omx.mcp_server 
 Other clients: run `python -m omx.mcp_server --config <path>` as a stdio
 server. `python -m omx.cli --config <path> mcp` does the same.
 
+`omx-mcp --inspect` (or `omx-hyperliquid --inspect`) starts with no config,
+daemon or key: it lists the tools and refuses every call with `NOT_CONFIGURED`.
+MCP directories use it (the `Dockerfile` runs it); it cannot trade.
+
 ## Tools
 
 | Tool | Effect |
