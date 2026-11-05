@@ -28,6 +28,12 @@ Check: call `get_quote` with `{"coin": "ETH"}`. The answer has `"ok": true` and 
 Then `preview_order` and `submit_order` with `{"coin": "ETH", "side": "buy", "size": 0.1, "algo":
 "twap", "duration_s": 10, "slices": 5}` and poll `order_status` until `"state": "done"`.
 
+## 1b. Paper trading on live prices (still no key)
+
+`"args": ["omx-hyperliquid", "--paper"]` gives the same tools with simulated fills against
+Hyperliquid mainnet's live public order books (public market data only; nothing is signed or sent).
+Orders must be at least 10 USD of notional, as on Hyperliquid. Answers carry `"paper": true`.
+
 ## 2. Real trading (only when the user asks, and only by the user)
 
 Do not create wallets, handle private keys or approve fees for the user. Tell the user:

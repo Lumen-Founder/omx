@@ -98,7 +98,14 @@ def _mark(res: Any) -> Any:
 class DemoGateway(AgentGateway):
     """AgentGateway with every answer marked demo. The eligibility attestation is not asked: it is about
     trading on Hyperliquid, and nothing here reaches Hyperliquid. The agent switch and
-    policy.allow_agent_sources are still checked."""
+    policy.allow_agent_sources are still checked. Subclasses (omx.paper) change the marking through
+    _mark, approval_note and kill_note."""
+
+    approval_note = DEMO_APPROVAL_NOTE
+    kill_note = DEMO_KILL_NOTE
+
+    def _mark(self, res: Any) -> Any:
+        return _mark(res)
 
     def _gate(self) -> Optional[dict]:
         if not self.cfg.agent.enabled:
@@ -108,37 +115,37 @@ class DemoGateway(AgentGateway):
         return None
 
     def get_quote(self, coin):
-        return _mark(super().get_quote(coin))
+        return self._mark(super().get_quote(coin))
 
     def preview_order(self, source, args):
-        return _mark(super().preview_order(source, args))
+        return self._mark(super().preview_order(source, args))
 
     def submit_order(self, source, args):
-        return _mark(super().submit_order(source, args))
+        return self._mark(super().submit_order(source, args))
 
     def approval_status(self, approval_id):
-        res = _mark(super().approval_status(approval_id))
+        res = self._mark(super().approval_status(approval_id))
         if res.get("state") == "pending":
-            res["message"] = DEMO_APPROVAL_NOTE
+            res["message"] = self.approval_note
         return res
 
     def order_status(self, intent_id):
-        return _mark(super().order_status(intent_id))
+        return self._mark(super().order_status(intent_id))
 
     def cancel_order(self, source, intent_id):
-        return _mark(super().cancel_order(source, intent_id))
+        return self._mark(super().cancel_order(source, intent_id))
 
     def kill_switch(self, source, reason):
-        res = _mark(super().kill_switch(source, reason))
+        res = self._mark(super().kill_switch(source, reason))
         if res.get("ok"):
-            res["message"] = DEMO_KILL_NOTE
+            res["message"] = self.kill_note
         return res
 
     def account_summary(self):
-        return _mark(super().account_summary())
+        return self._mark(super().account_summary())
 
     def policy_limits(self):
-        return _mark(super().policy_limits())
+        return self._mark(super().policy_limits())
 
 
 class DemoRuntime:

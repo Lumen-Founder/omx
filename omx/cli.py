@@ -166,6 +166,10 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("mcp", help="run the MCP server for AI agents on stdio (a client of the daemon)")
     sub.add_parser("demo", help="run the MCP server on stdio with a simulated venue: no config, key, daemon or "
                                 "network; nothing real is traded")
+    p = sub.add_parser("paper", help="run the MCP server on stdio with simulated fills against live Hyperliquid "
+                                     "public order books: no config, key, account or daemon; nothing real is traded")
+    p.add_argument("--paper-equity", type=float, default=None, metavar="USD",
+                   help="starting paper balance in USD (default 10000)")
     return ap
 
 
@@ -329,6 +333,10 @@ def _run(ns, engine_factory, input_fn, out, err, clock, transport_factory=None, 
     if ns.cmd == "demo":                   # needs no config: everything lives in a temporary directory
         from .demo import serve_demo
         return serve_demo(err)
+
+    if ns.cmd == "paper":                  # no config either; reads only public market data
+        from .paper import PAPER_EQUITY_USD, serve_paper
+        return serve_paper(err, PAPER_EQUITY_USD if ns.paper_equity is None else ns.paper_equity)
 
     if ns.cmd == "init":
         path = config_path(ns.config)

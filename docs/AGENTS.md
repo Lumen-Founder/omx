@@ -98,6 +98,24 @@ server with no arguments, from a registry or an install link, gets working
 tools. A named config that is missing stays an error, and `omx-mcp` always
 needs a config.
 
+`omx-mcp --paper` (or `omx-hyperliquid --paper`, or `omx paper`) is paper
+trading on live data: the same in-process engine, gateway, policy, approval
+threshold, agent budget, kill switch and audit log, on `omx/venue/paper.py`,
+whose books are Hyperliquid mainnet's public order books. It needs no config,
+daemon, key or account. Its only network access is `POST
+https://api.hyperliquid.xyz/info` with `l2Book`, `allMids` or
+`metaAndAssetCtxs` (a guard refuses any other path or request type, so there is
+no `/exchange` call and no account read); it never builds the Hyperliquid
+adapter or a signer. The paper account starts at 10,000 USD
+(`--paper-equity <USD>` to change it). Taker orders walk the real book at
+Hyperliquid's base-tier fees (taker 0.045 %, maker 0.015 %); resting orders
+fill only when the book trades through their price. Every answer carries
+`"paper": true` and a `paper_note`. If the data cannot be read, quotes and
+orders for that coin answer `MARKET_DATA_UNAVAILABLE:<coin>` and the server
+keeps running. State lives in a temporary directory deleted on exit. Fills are
+a model, not Hyperliquid's matching engine: see [PAPER.md](PAPER.md).
+`--paper`, `--demo` and `--inspect` are mutually exclusive.
+
 ## Tools
 
 | Tool | Effect |

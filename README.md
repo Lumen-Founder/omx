@@ -1,5 +1,9 @@
 # OMX: Hyperliquid execution for AI agents (MCP)
 
+[![tests](https://github.com/Lumen-Founder/omx/actions/workflows/test.yml/badge.svg)](https://github.com/Lumen-Founder/omx/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/omx-hyperliquid)](https://pypi.org/project/omx-hyperliquid/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 OMX is a non-custodial execution engine for Hyperliquid perpetuals. It runs on
 your own machine, turns an order intent (market, limit, TWAP, POV, chase) into
 child orders, checks every child against a pre-trade policy you configure, and
@@ -8,6 +12,18 @@ server let a human or an AI agent drive it inside those limits.
 
 OMX makes no claim about trading performance or profit. It is execution
 plumbing with guard rails.
+
+| You worry about | What OMX does |
+|---|---|
+| Your keys | Signs only with a Hyperliquid [API (agent) wallet](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets) you create in your own account; never asks for your main key or seed. The config holds the key file's path, not the key. No withdrawal or transfer code. |
+| Limits | Every child order is checked locally: coin allowlist, liquidity and depth, price band and slippage, per-coin and account notional (resting orders included), leverage, daily loss, data age. Agents cannot change limits. |
+| Human approval | An agent intent above `approval_above_usd`, or beyond the agent's daily budget, waits for you: `omx approvals approve <id>`, then a confirm code typed in the daemon's terminal. Pending approvals expire. |
+| Stopping it | Any agent or human can trip the kill switch; it cancels resting OMX orders. Only a human can clear it (`omx unkill`). |
+| Audit | Every decision goes to a hash-chained log; `omx audit verify` detects tampering. |
+| Fees | Optional 1 bp builder fee, charged only after you approve it in your own wallet; `--no-builder` for none. See [docs/FEES.md](docs/FEES.md). |
+
+Path: the keyless demo, then paper trading on live Hyperliquid books (also
+keyless), then testnet, then mainnet with small size.
 
 ## Try it now: no key, no account
 
@@ -47,7 +63,32 @@ Then ask the agent to quote ETH, preview a small TWAP and submit it (for
 example buy 0.1 ETH over 10 s in 5 slices), and poll `order_status` until it
 is `done`. An intent above 1,000 USD returns an `approval_id` and waits for a
 human; the demo has no approval step, so it stays pending and expires. After
-`kill_switch` every new order is refused until the server restarts.
+`kill_switch` every new order is refused. In real use only a human clears it,
+with `omx unkill` (it asks you to type `I UNDERSTAND`); the demo has no
+`unkill`, so restart the server to start fresh.
+
+### Paper trading on live Hyperliquid books
+
+`omx-hyperliquid --paper` (or `omx-mcp --paper`, `omx paper`) runs the same
+tools with simulated fills against Hyperliquid mainnet's live public order
+books. No key, no account, no config, no daemon: it only reads public market
+data (`/info` l2Book, allMids, metaAndAssetCtxs) and never signs or sends an
+order. The paper account starts at 10,000 USD (`--paper-equity 2500` to change
+it); taker orders walk the real book at Hyperliquid's base-tier fees (0.045 %
+taker, 0.015 % maker), resting orders fill only when the book trades through
+their price, and the default policy limits apply (including Hyperliquid's 10
+USD minimum order). Every answer carries `"paper": true`. Fills are a model,
+not Hyperliquid's matching engine; see [docs/PAPER.md](docs/PAPER.md).
+
+```
+claude mcp add omx-paper -- uvx omx-hyperliquid --paper
+```
+
+Any other client: `{"command": "uvx", "args": ["omx-hyperliquid", "--paper"]}`.
+
+Codex CLI waits 10 s for a server to start by default, and the first `uvx` run
+downloads the dependencies; if it times out, add `startup_timeout_sec = 60`
+under `[mcp_servers.omx]` in `~/.codex/config.toml`.
 
 To trade with your own account, follow [Quick start](#quick-start-testnet) and
 give the same server your config: set `OMX_CONFIG` to its path in the client's
@@ -58,7 +99,7 @@ has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
 Agent SDK, PydanticAI and CrewAI, each checked against this server with the
 framework's own MCP client (demo mode by default).
 
-**Status (v0.1.4):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.5):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.

@@ -274,4 +274,7 @@ a block in it still blocks, a pass in it must be re-attested.
 ## Reporting
 
 Report suspected vulnerabilities privately to the maintainers rather than in a
-public issue.
+public issue: on GitHub, open the repository's **Security** tab and choose
+**Report a vulnerability** (private vulnerability reporting is enabled). Please
+include the version, the steps to reproduce and the impact. Never include a
+private key or seed phrase in a report.

@@ -28,6 +28,7 @@ returns the existing intent's id and state (status "duplicate") and sends nothin
 
 Run: python -m omx.cli mcp --config omx.toml   (or python -m omx.mcp_server --config omx.toml)
 Try without a key, account or daemon: omx-mcp --demo (simulated venue in this process, see omx.demo)
+Paper trading on live public books, still without a key or account: omx-mcp --paper (see omx.paper)
 """
 from __future__ import annotations
 
@@ -534,7 +535,17 @@ def main(argv: Optional[list[str]] = None, prog: str = "omx-mcp", no_config_demo
                       help="list the tools without a config or daemon; every call is refused (for MCP directories)")
     mode.add_argument("--demo", action="store_true",
                       help="try the tools on a simulated venue in this process: no config, key, daemon or network")
+    mode.add_argument("--paper", action="store_true",
+                      help="paper trading: simulated fills against live Hyperliquid public order books (read-only "
+                           "public data); no config, key, account or daemon; nothing real is traded")
+    ap.add_argument("--paper-equity", type=float, default=None, metavar="USD",
+                    help="starting paper balance in USD (default 10000); only with --paper")
     ns = ap.parse_args(argv)
+    if ns.paper_equity is not None and not ns.paper:
+        ap.error("--paper-equity needs --paper")
+    if ns.paper:
+        from .paper import PAPER_EQUITY_USD, serve_paper
+        return serve_paper(equity_usd=PAPER_EQUITY_USD if ns.paper_equity is None else ns.paper_equity)
     if ns.demo:
         from .demo import serve_demo
         return serve_demo()

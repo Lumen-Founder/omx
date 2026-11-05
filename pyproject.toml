@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omx-hyperliquid"               # distribution name (PyPI); the import package is `omx`
-version = "0.1.4"
+version = "0.1.5"
 description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 dependencies = ["hyperliquid-python-sdk==0.20.0", "eth-account", "msgpack", "requests", "mcp>=2.3"]
 keywords = ["hyperliquid", "mcp", "mcp-server", "model-context-protocol", "ai-agents", "trading", "perpetuals",
-            "twap", "execution", "non-custodial"]
+            "twap", "execution", "non-custodial", "paper-trading"]
 classifiers = ["License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3",
                "Operating System :: OS Independent", "Topic :: Office/Business :: Financial :: Investment"]
 

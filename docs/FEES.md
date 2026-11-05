@@ -4,8 +4,14 @@ OMX itself has no subscription or account fee. Two fees can apply to a fill:
 
 1. **Hyperliquid's exchange fee** (taker fee, or maker fee/rebate), set by
    Hyperliquid's fee schedule and your volume tier. OMX does not change it.
-2. **An optional builder fee**, only if the config sets one. The default is
-   `fee_tenths_bps = 0`: no builder code is sent and no builder fee is charged.
+2. **An optional builder fee** that pays the OMX maintainers. On mainnet,
+   `omx init` sets the OMX builder code at 1 bp (`fee_tenths_bps = 10`, 0.01 %
+   of filled notional). It is charged only after you approve it from your own
+   wallet (`omx approve-builder`) and you can revoke it at any time.
+   `omx init --no-builder` sends no builder code (fee 0), `--fee-tenths-bps`
+   sets a lower fee, and `--builder-address` uses your own. Testnet has no
+   default builder. A config without a `[builder]` fee is `fee_tenths_bps = 0`.
+   The demo and paper modes charge no builder fee.
 
 ## Builder fee math
 
