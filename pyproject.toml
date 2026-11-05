@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omx-hyperliquid"               # distribution name (PyPI); the import package is `omx`
-version = "0.1.6"
+version = "0.1.7"
 description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -16,9 +16,9 @@ classifiers = ["License :: OSI Approved :: MIT License", "Programming Language :
                "Operating System :: OS Independent", "Topic :: Office/Business :: Financial :: Investment"]
 
 [project.urls]
-Homepage = "https://github.com/Lumen-Founder/omx"
-Source = "https://github.com/Lumen-Founder/omx"
-Issues = "https://github.com/Lumen-Founder/omx/issues"
+Homepage = "https://github.com/Lumen-Founder/omx-hyperliquid-mcp"
+Source = "https://github.com/Lumen-Founder/omx-hyperliquid-mcp"
+Issues = "https://github.com/Lumen-Founder/omx-hyperliquid-mcp/issues"
 Examples = "https://github.com/Lumen-Founder/omx-integrations"
 
 [project.optional-dependencies]

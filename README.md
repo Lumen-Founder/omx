@@ -1,6 +1,6 @@
 # OMX: Hyperliquid execution for AI agents (MCP)
 
-[![tests](https://github.com/Lumen-Founder/omx/actions/workflows/test.yml/badge.svg)](https://github.com/Lumen-Founder/omx/actions/workflows/test.yml)
+[![tests](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/omx-hyperliquid)](https://pypi.org/project/omx-hyperliquid/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -44,13 +44,13 @@ codex mcp add omx -- uvx omx-hyperliquid           # OpenAI Codex CLI
 gemini mcp add omx uvx omx-hyperliquid             # Gemini CLI
 ```
 
-- Claude Code plugin: `/plugin marketplace add Lumen-Founder/omx`, then `/plugin install omx@omx`.
-- Gemini CLI extension: `gemini extensions install https://github.com/Lumen-Founder/omx`.
+- Claude Code plugin: `/plugin marketplace add Lumen-Founder/omx-hyperliquid-mcp`, then `/plugin install omx@omx`.
+- Gemini CLI extension: `gemini extensions install https://github.com/Lumen-Founder/omx-hyperliquid-mcp`.
 - Any other MCP client (Claude Desktop, Cline, Windsurf, Zed, JetBrains, ...):
   `{"mcpServers": {"omx": {"command": "uvx", "args": ["omx-hyperliquid"]}}}`.
   Claude Desktop keeps it in `claude_desktop_config.json` (Settings > Developer >
   Edit Config; Windows `%APPDATA%\Claude\`, macOS `~/Library/Application Support/Claude/`);
-  Cursor in `~/.cursor/mcp.json`. Pin a version with `"omx-hyperliquid@0.1.6"`.
+  Cursor in `~/.cursor/mcp.json`. Pin a version with `"omx-hyperliquid@0.1.7"`.
 - No `uv`? Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`;
   macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`; then open a new terminal. Or
   `pip install omx-hyperliquid` and use `omx-hyperliquid` as the command.
@@ -117,7 +117,7 @@ has copy-and-run examples for the OpenAI Agents SDK, LangChain, the Claude
 Agent SDK, PydanticAI and CrewAI, each checked against this server with the
 framework's own MCP client (demo mode by default).
 
-**Status (v0.1.6):** pre-1.0. The full path (agent intent -> policy -> signed
+**Status (v0.1.7):** pre-1.0. The full path (agent intent -> policy -> signed
 order with a builder code -> fill -> kill switch -> audit verify) has been run
 end to end on Hyperliquid testnet. OMX has not had an external security audit.
 Start on testnet, then mainnet with small size. MIT licensed, no warranty.

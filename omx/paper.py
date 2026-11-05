@@ -71,7 +71,7 @@ PAPER_INSTRUCTIONS = ("OMX PAPER MODE: the real OMX tools with simulated fills a
                       "<agent key file> --enable-agent`, then `omx approve-builder` (optional 1 bp fee, approved "
                       "in their own wallet; `--no-builder` for none) and `omx daemon` in its own terminal; then "
                       "start this server as `omx-hyperliquid --config omx.toml`. Setup guide: "
-                      "https://github.com/Lumen-Founder/omx#quick-start-testnet")
+                      "https://github.com/Lumen-Founder/omx-hyperliquid-mcp#quick-start-testnet")
 
 
 def paper_policy() -> PolicyConfig:

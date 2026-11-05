@@ -3,24 +3,24 @@
   "name": "io.github.Lumen-Founder/omx-hyperliquid-trading",
   "title": "OMX for Hyperliquid",
   "description": "Hyperliquid execution for AI agents: limits, human approval, kill switch. Keyless demo + live paper.",
-  "websiteUrl": "https://github.com/Lumen-Founder/omx",
+  "websiteUrl": "https://github.com/Lumen-Founder/omx-hyperliquid-mcp",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/Lumen-Founder/omx/main/assets/icon.png",
+      "src": "https://raw.githubusercontent.com/Lumen-Founder/omx-hyperliquid-mcp/main/assets/icon.png",
       "mimeType": "image/png",
       "sizes": ["512x512"]
     }
   ],
   "repository": {
-    "url": "https://github.com/Lumen-Founder/omx",
+    "url": "https://github.com/Lumen-Founder/omx-hyperliquid-mcp",
     "source": "github"
   },
-  "version": "0.1.6",
+  "version": "0.1.7",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "omx-hyperliquid",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

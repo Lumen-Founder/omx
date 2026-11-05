@@ -50,4 +50,4 @@ Do not create wallets, handle private keys or approve fees for the user. Tell th
 6. In the MCP client, set the server's environment `OMX_CONFIG` to the config path (or add
    `"--config", "<path>"` to `args`).
 
-Full guide: https://github.com/Lumen-Founder/omx#quick-start-testnet
+Full guide: https://github.com/Lumen-Founder/omx-hyperliquid-mcp#quick-start-testnet

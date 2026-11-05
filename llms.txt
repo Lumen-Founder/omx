@@ -6,11 +6,11 @@ PyPI: `omx-hyperliquid`. Official MCP Registry: `io.github.Lumen-Founder/omx-hyp
 
 ## Docs
 
-- [README](https://github.com/Lumen-Founder/omx/blob/main/README.md): install, demo, quick start, controls, builder fee
-- [Install guide for agents](https://github.com/Lumen-Founder/omx/blob/main/llms-install.md): demo setup, then what to tell the user for real trading
-- [MCP tools and approvals](https://github.com/Lumen-Founder/omx/blob/main/docs/AGENTS.md): the 9 tools, thresholds, kill switch, trust boundary
-- [Security model](https://github.com/Lumen-Founder/omx/blob/main/docs/SECURITY.md)
-- [Fees](https://github.com/Lumen-Founder/omx/blob/main/docs/FEES.md)
+- [README](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/blob/main/README.md): install, demo, quick start, controls, builder fee
+- [Install guide for agents](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/blob/main/llms-install.md): demo setup, then what to tell the user for real trading
+- [MCP tools and approvals](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/blob/main/docs/AGENTS.md): the 9 tools, thresholds, kill switch, trust boundary
+- [Security model](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/blob/main/docs/SECURITY.md)
+- [Fees](https://github.com/Lumen-Founder/omx-hyperliquid-mcp/blob/main/docs/FEES.md)
 
 ## Examples
 
