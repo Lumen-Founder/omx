@@ -23,14 +23,20 @@ So the spot USDC `total` is the account's collateral balance, and isolated margi
 Whether the unrealized P&L of open perp positions is inside `total` is NOT stated anywhere. The ratio
 formula, read like the standard-mode ratio (maintenance margin / account value, which includes
 unrealized P&L), hints that it is; "balance" could equally mean the cash balance before unrealized
-P&L (as perp `totalRawUsd` is). The docs do not settle it, so OMX takes the conservative choice:
+P&L (as perp `totalRawUsd` is). The docs do not settle it.
+
+Measured (testnet, 2026-11-05 08:31-08:36 UTC, unifiedAccount, ETH 0.0061 cross, 10 reads 30 s apart,
+tools/measure_account_mode.py): in all 9 intervals the change of spot USDC `total` equalled the change
+of unrealizedPnl to the last printed digit (1e-6), both up and down, and spot `total` minus perp
+marginSummary.accountValue stayed at one constant (the cash outside the perp margin). So `total`
+already holds the unrealized P&L: VERIFIED_UNIFIED_BASIS = BASIS_SPOT_TOTAL.
+
+The unmeasured fallback is still callable (verified=BASIS_UNIFIED_CONSERVATIVE):
 
     equity = min(spot USDC total, spot USDC total + sum(unrealizedPnl of perp positions))
 
-and marks the snapshot EQUITY_BASIS_UNVERIFIED. With losing positions this counts the loss even if
-`total` already holds it (equity understated, never overstated); with winning positions it ignores
-the gain. tools/measure_account_mode.py on testnet (an open position whose unrealized P&L moves)
-settles it: set VERIFIED_UNIFIED_BASIS to the measured basis and the flag goes away.
+flagged EQUITY_BASIS_UNVERIFIED (understated, never overstated). Re-run the tool if Hyperliquid
+changes the unified account.
 """
 from __future__ import annotations
 
@@ -51,8 +57,8 @@ BASIS_SPOT_TOTAL = "spot_usdc_total"                  # candidate A: total alrea
 BASIS_SPOT_PLUS_UPNL = "spot_usdc_total_plus_upnl"    # candidate B: total is cash before unrealized P&L
 BASIS_UNIFIED_CONSERVATIVE = "unified_min_of_candidates"
 
-# Set to BASIS_SPOT_TOTAL or BASIS_SPOT_PLUS_UPNL once a testnet measurement settles it.
-VERIFIED_UNIFIED_BASIS: Optional[str] = None
+# Measured on testnet 2026-11-05 (see the module doc).
+VERIFIED_UNIFIED_BASIS: Optional[str] = BASIS_SPOT_TOTAL
 
 
 def is_supported(mode: Optional[str]) -> bool:
@@ -101,7 +107,8 @@ def perp_upnl(perp_state) -> float:
 def unified_equity(spot_state, perp_state, verified: Optional[str] = None) -> dict:
     """Account equity of a unified account and how it was chosen (see the module doc).
 
-    verified: None = use VERIFIED_UNIFIED_BASIS (module constant)."""
+    verified: None = use VERIFIED_UNIFIED_BASIS (module constant); BASIS_UNIFIED_CONSERVATIVE = the
+    unmeasured fallback."""
     verified = VERIFIED_UNIFIED_BASIS if verified is None else verified
     total, hold = usdc_balance(spot_state)
     upnl = perp_upnl(perp_state)

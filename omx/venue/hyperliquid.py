@@ -466,8 +466,8 @@ class HyperliquidVenue:
         Positions always come from clearinghouseState (weight 2). Equity by account mode
         (omx.account_mode, which also holds the doc text behind the unified basis): standard
         ("disabled" / "default") = perp marginSummary.accountValue; "unifiedAccount" = spot USDC total
-        (spotClearinghouseState, weight 2) and the positions' unrealized P&L, the lower candidate while
-        EQUITY_BASIS_UNVERIFIED; any other mode = perp accountValue flagged ACCOUNT_MODE_UNSUPPORTED
+        (spotClearinghouseState, weight 2), which holds the positions' unrealized P&L (measured
+        2026-11-05; VERIFIED_UNIFIED_BASIS); any other mode = perp accountValue flagged ACCOUNT_MODE_UNSUPPORTED
         (the policy then blocks every child; the read itself still succeeds so kill keeps working)."""
         mode = self.account_mode()
         cs = self._info({"type": "clearinghouseState", "user": self.account_address})

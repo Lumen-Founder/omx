@@ -189,7 +189,9 @@ per 10 s, stretched with the other reads while orders work).
   (`disabled` / `default`) or unified (`unifiedAccount`), or one that cannot be
   read, refuses new intents and blocks every child order with
   `ACCOUNT_MODE_UNSUPPORTED`; kill and cancels still run. A unified account's
-  equity is the lower of spot USDC `total` and `total + unrealized P&L` while
+  equity is spot USDC `total`, which a testnet measurement (2026-11-05) showed
+  already holds the unrealized P&L. Without that measurement the fallback is the
+  lower of `total` and `total + unrealized P&L`, flagged
   `EQUITY_BASIS_UNVERIFIED` (never the higher reading). When the equity basis
   changes during a day (mode switch, or a day start from an older version), a
   rise across the change is booked as a non-P&L flow and a fall stays in day

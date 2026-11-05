@@ -31,7 +31,8 @@ except ImportError:                               # run from a checkout without 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from omx import account_mode as AM
 
-MIN_UPNL_MOVE = 0.05                              # USDC; smaller moves are not used for the verdict
+MIN_UPNL_MOVE = 0.0005                            # USDC; smaller moves are not used for the verdict. HL prints
+                                                  # 6 decimals, so a 0.0005 move still gives the ratio to 0.4 %
 SAME, NONE_ = (0.8, 1.2), (-0.2, 0.2)
 
 

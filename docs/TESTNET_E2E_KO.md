@@ -47,10 +47,10 @@
 4-1. **계정 유형 확인** (바꿀 필요 없음)
    - OMX는 통합 계정(unifiedAccount, 이용자 기본값)과 standard 계정(disabled / default)을 모두 지원한다.
    - 통합 계정이면 잔고를 현물 USDC `total`(spotClearinghouseState)에서 읽는다. 포지션은 퍼프 상태에서 읽는다.
-   - `total`에 퍼프 미실현손익이 이미 들어 있는지는 HL 문서에 적혀 있지 않다. 그래서 확인 전까지는 두 후보 중 낮은 값을 쓰고 `EQUITY_BASIS_UNVERIFIED`를 표시한다(doctor·account 출력).
+   - `total`에 퍼프 미실현손익이 이미 들어 있는지는 HL 문서에 적혀 있지 않다. 2026-11-05 테스트넷 실측(4-2 도구, 9개 구간 모두 소수 여섯째 자리까지 일치)으로 들어 있음을 확인했다. 그래서 OMX는 `total`을 그대로 잔고로 쓴다.
    - 포트폴리오 마진(portfolioMargin)·DEX abstraction이면 새 주문을 거부한다(`ACCOUNT_MODE_UNSUPPORTED`). 긴급 중지는 그대로 된다. 이때는 계정 유형을 Unified 또는 Manual / Standard로 바꾼다.
    - 선택: Manual / Standard로 바꿔도 된다(포트폴리오 화면의 "계정 유형", 지갑 서명). 그때는 현물 → 퍼프로 USDC를 옮긴다. HL 문서는 자동매매 이용자에게 standard를 권한다.
-4-2. **잔고 기준 측정** (통합 계정일 때, 키 불필요·읽기 전용)
+4-2. **잔고 기준 측정** (선택, 2026-11-05 측정 완료. HL이 통합 계정을 바꿨다고 의심될 때만 다시 한다. 키 불필요·읽기 전용)
    - 테스트넷 화면에서 작은 포지션 하나를 연다(예: ETH 15 USD).
    - 창 A에서 실행한다. 30초 간격으로 10번 읽는다(약 5분).
      ```powershell

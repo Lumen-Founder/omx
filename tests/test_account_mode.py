@@ -90,13 +90,14 @@ def recs(path, kind):
 
 # ---------------------------------------------------------------- equity basis (pure)
 def test_unified_equity_takes_the_lower_candidate_and_flags_it():
-    lose = AM.unified_equity(spot_of("1000.0", "12.5"), {"assetPositions": [pos(upnl="-50.0")]})
+    lose = AM.unified_equity(spot_of("1000.0", "12.5"), {"assetPositions": [pos(upnl="-50.0")]}, verified=AM.BASIS_UNIFIED_CONSERVATIVE)
     assert lose["equity_usd"] == pytest.approx(950.0) and lose["flags"] == (UNV,)
     assert lose["basis"] == AM.BASIS_UNIFIED_CONSERVATIVE and lose["spot_usdc_hold"] == 12.5
     assert lose["candidates"] == {AM.BASIS_SPOT_TOTAL: 1000.0, AM.BASIS_SPOT_PLUS_UPNL: 950.0}
-    win = AM.unified_equity(spot_of("1000.0"), {"assetPositions": [pos(upnl="30.0"), pos("ETH", upnl="5.0")]})
+    win = AM.unified_equity(spot_of("1000.0"), {"assetPositions": [pos(upnl="30.0"), pos("ETH", upnl="5.0")]},
+                           verified=AM.BASIS_UNIFIED_CONSERVATIVE)
     assert win["equity_usd"] == pytest.approx(1000.0) and win["perp_upnl_usd"] == pytest.approx(35.0)
-    flat = AM.unified_equity(spot_of("743.877"), {"assetPositions": [pos(szi="0", upnl="99")]})
+    flat = AM.unified_equity(spot_of("743.877"), {"assetPositions": [pos(szi="0", upnl="99")]}, verified=AM.BASIS_UNIFIED_CONSERVATIVE)
     assert flat["equity_usd"] == pytest.approx(743.877)                       # closed rows carry no P&L
     assert AM.unified_equity({"balances": []}, {})["equity_usd"] == 0.0       # no USDC row: nothing
 
@@ -105,7 +106,9 @@ def test_unified_equity_after_a_measurement_drops_the_flag():
     a = AM.unified_equity(spot_of("1000"), {"assetPositions": [pos(upnl="-50")]}, verified=AM.BASIS_SPOT_TOTAL)
     b = AM.unified_equity(spot_of("1000"), {"assetPositions": [pos(upnl="-50")]}, verified=AM.BASIS_SPOT_PLUS_UPNL)
     assert (a["equity_usd"], a["flags"]) == (1000.0, ()) and (b["equity_usd"], b["flags"]) == (950.0, ())
-    assert AM.VERIFIED_UNIFIED_BASIS is None                                  # not measured yet: fail closed
+    assert AM.VERIFIED_UNIFIED_BASIS == AM.BASIS_SPOT_TOTAL                   # measured on testnet 2026-11-05
+    d = AM.unified_equity(spot_of("1000"), {"assetPositions": [pos(upnl="-50")]})
+    assert (d["equity_usd"], d["basis"], d["flags"]) == (1000.0, AM.BASIS_SPOT_TOTAL, ())
 
 
 @pytest.mark.parametrize("spot,perp", [({}, {}), ({"balances": [{"coin": "USDC", "total": "nan"}]}, {}),
@@ -119,7 +122,7 @@ def test_unified_equity_refuses_malformed_input(spot, perp):
 @pytest.mark.parametrize("mode,equity,basis,flags", [
     ("disabled", 1000.0, AM.BASIS_PERP, ()),
     ("default", 1000.0, AM.BASIS_PERP, ()),
-    ("unifiedAccount", 5950.0, AM.BASIS_UNIFIED_CONSERVATIVE, (UNV,)),
+    ("unifiedAccount", 6000.0, AM.BASIS_SPOT_TOTAL, ()),
     ("portfolioMargin", 1000.0, AM.BASIS_PERP, (AM.ACCOUNT_MODE_UNSUPPORTED,)),
     ("dexAbstraction", 1000.0, AM.BASIS_PERP, (AM.ACCOUNT_MODE_UNSUPPORTED,)),
 ])
@@ -182,12 +185,12 @@ def test_supported_modes_trade(tmp_path, mode):
     view = eng.account_view()
     assert view["equity_usd"] == pytest.approx(10000.0) and view["account_mode"] == mode
     assert view["account_mode_block"] is None
-    assert view["equity_flags"] == ([UNV] if mode == "unifiedAccount" else [])
-    assert view["equity_basis"] == (AM.BASIS_UNIFIED_CONSERVATIVE if mode == "unifiedAccount" else AM.BASIS_PERP)
+    assert view["equity_flags"] == []
+    assert view["equity_basis"] == (AM.BASIS_SPOT_TOTAL if mode == "unifiedAccount" else AM.BASIS_PERP)
 
 
 def test_unified_losing_position_lowers_equity_for_the_policy(tmp_path):
-    st = {"mode": "unifiedAccount", "spot": "1000", "pos": [pos(upnl="-200.0")]}
+    st = {"mode": "unifiedAccount", "spot": "800", "pos": [pos(upnl="-200.0")]}   # total already holds the -200
     eng, _, _, _ = hl(tmp_path, st, policy=PolicyConfig(min_depth_usd=0.0, max_leverage=1.5))
     eng.step()
     assert eng.account_view()["equity_usd"] == pytest.approx(800.0)
@@ -250,7 +253,7 @@ def test_switch_standard_to_unified_books_the_rise_not_as_pnl(tmp_path):
     eng2.step()
     assert eng2.account_view()["day_pnl_usd"] == pytest.approx(-100.0)
     d = json.loads((tmp_path / "s" / "engine_day.json").read_text(encoding="utf-8"))
-    assert d["basis"] == AM.BASIS_UNIFIED_CONSERVATIVE and d["basis_adj"] == pytest.approx(5000.0)
+    assert d["basis"] == AM.BASIS_SPOT_TOTAL and d["basis_adj"] == pytest.approx(5000.0)
 
 
 def test_switch_unified_to_standard_keeps_the_fall_in_day_pnl(tmp_path):
@@ -311,13 +314,13 @@ def unified_info(account, agent, mode="unifiedAccount", upnl="-50.0"):
         ("spotClearinghouseState", account.lower()): spot_of("743.877")})
 
 
-def test_doctor_unified_ok_with_basis_and_unverified_flag(setup):  # noqa: F811
+def test_doctor_unified_ok_with_the_measured_basis(setup):  # noqa: F811
     p, account, agent, _, _ = setup
     res = by_name(checks(p, unified_info(account, agent).factory))
     m, v = res["account mode"], res["account value"]
-    assert m.status == "OK" and "unifiedAccount" in m.detail and UNV in m.detail
-    assert AM.BASIS_UNIFIED_CONSERVATIVE in m.detail and "693.88" in m.detail and "743.88" in m.detail
-    assert v.status == "OK" and "693.88" in v.detail and UNV in v.detail     # 743.877 - 50
+    assert m.status == "OK" and "unifiedAccount" in m.detail and UNV not in m.detail
+    assert AM.BASIS_SPOT_TOTAL in m.detail and "743.88" in m.detail
+    assert v.status == "OK" and "743.88" in v.detail and UNV not in v.detail  # spot total holds the P&L
     assert res["builder account mode"].status == "OK"                         # builder check unchanged
 
 
@@ -384,7 +387,8 @@ def test_measure_prints_every_field_without_a_key(tmp_path):
     for s in ("userAbstraction: 'unifiedAccount'", "USDC", "total 1000.0", "hold 1.5", "marginSummary",
               "crossMarginSummary", "crossMaintenanceMarginUsed: 4.1", "unrealizedPnl -10.0", "marginUsed 411.5",
               "candidate equity A (spot_usdc_total): 1000.000000",
-              "candidate equity B (spot_usdc_total_plus_upnl): 990.000000", UNV, "no key is read"):
+              "candidate equity B (spot_usdc_total_plus_upnl): 990.000000", "OMX now uses: spot_usdc_total",
+              "no key is read"):
         assert s in out, (s, out)
     assert set(fake.calls) == {"userAbstraction", "spotClearinghouseState", "clearinghouseState"}
 
@@ -413,3 +417,14 @@ def test_measure_standard_and_unsupported_modes(tmp_path):
     assert "perp_account_value" in out and "standard account" in out
     _, out, _ = run_measure(tmp_path, Seq([(10.0, None)], mode="portfolioMargin"))
     assert AM.ACCOUNT_MODE_UNSUPPORTED in out
+
+
+# The testnet reads of 2026-11-05 08:31-08:36 UTC that set VERIFIED_UNIFIED_BASIS (USDC total, unrealizedPnl).
+MEASURED_20261105 = [(887.946667, -0.00671), (887.951547, -0.00183), (887.953987, 0.00061), (887.955207, 0.00183),
+                     (887.956427, 0.00305), (887.958867, 0.00549), (887.958074, 0.004697), (887.955817, 0.00244),
+                     (887.958257, 0.00488), (887.954597, 0.00122)]
+
+
+def test_measure_verdict_on_the_real_testnet_reads(tmp_path):
+    _, out, _ = run_measure(tmp_path, Seq(MEASURED_20261105), "--samples", str(len(MEASURED_20261105)))
+    assert "basis spot_usdc_total (candidate A)" in out and out.count("ratio +1.000") == 9

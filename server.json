@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Lumen-Founder/omx",
+  "title": "OMX for Hyperliquid",
+  "description": "Non-custodial Hyperliquid execution for AI agents: pre-trade limits, kill switch, audit log.",
+  "repository": {
+    "url": "https://github.com/Lumen-Founder/omx",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "omx-hyperliquid",
+      "version": "0.1.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "OMX_CONFIG",
+          "description": "Path to your omx.toml (written by `omx init`). The daemon (`omx daemon`) must be running.",
+          "isRequired": true,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

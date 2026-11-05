@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "omx"
-version = "0.1.0"
+name = "omx-hyperliquid"               # distribution name (PyPI); the import package is `omx`
+version = "0.1.1"
 description = "Non-custodial, policy-checked execution engine for Hyperliquid (CLI + MCP for AI agents)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,6 +17,7 @@ test = ["pytest"]
 [project.scripts]
 omx = "omx.cli:main"
 omx-mcp = "omx.mcp_server:main"
+omx-hyperliquid = "omx.mcp_server:main"   # what `uvx omx-hyperliquid` runs (MCP Registry entry)
 
 [tool.setuptools.packages.find]
 include = ["omx*"]

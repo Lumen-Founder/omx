@@ -190,10 +190,10 @@ and only when you run it.
 start and every 10 minutes. Standard accounts (`disabled` / `default`) use the
 perp account value as equity. Unified accounts (`unifiedAccount`, the default
 for users) keep one USDC balance in the spot clearinghouse, so OMX takes equity
-from the spot USDC `total` and the open positions' unrealized P&L. The docs do
-not say whether `total` already holds that P&L, so until it is measured OMX uses
-the lower of `total` and `total + unrealized P&L` and shows
-`EQUITY_BASIS_UNVERIFIED` (doctor, account view). Positions always come from the
+from the spot USDC `total`. The docs do not say whether `total` already holds
+the open positions' unrealized P&L; a testnet measurement (2026-11-05, 9 of 9
+intervals: `total` moved with the unrealized P&L to 1e-6) shows it does, so the
+equity is `total` itself. Positions always come from the
 perp clearinghouse state. `portfolioMargin`, `dexAbstraction` or an unreadable
 mode refuse new intents with `ACCOUNT_MODE_UNSUPPORTED` (kill and cancels still
 work). Switching to Manual / Standard is optional; builder addresses must be

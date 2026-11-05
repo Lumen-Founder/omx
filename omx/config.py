@@ -31,7 +31,7 @@ FORBIDDEN_NAMES = {"private_key", "secret", "secret_key", "mnemonic", "seed", "s
 # The OMX maintainers' builder code, used by `omx init` when no --builder-address / --no-builder is given.
 # It only takes effect after the user approves it from their own wallet (`omx approve-builder`); `omx fees`
 # shows it in plain words. None = no default on that network.
-DEFAULT_BUILDER = {"mainnet": None, "testnet": None}
+DEFAULT_BUILDER = {"mainnet": "0x34C752D1092faE5C01c5CF00798F16534065E1f1", "testnet": None}
 DEFAULT_BUILDER_FEE_TENTHS_BPS = 10     # 1 bps
 
 

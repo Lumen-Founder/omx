@@ -75,7 +75,11 @@ def test_init_default_builder_is_used_only_when_set_and_can_be_declined(tmp_path
         assert code == 0, err
         return load(p)
 
+    monkeypatch.setitem(config_mod.DEFAULT_BUILDER, "mainnet", None)
     c = cfg_after([], "none.toml")                                   # no default shipped: no builder code
+    assert c.builder_address is None and c.builder_fee_tenths_bps == 0
+    monkeypatch.setitem(config_mod.DEFAULT_BUILDER, "mainnet", ACCOUNT)
+    c = cfg_after([], "self.toml")                                   # the builder's own account: no builder code
     assert c.builder_address is None and c.builder_fee_tenths_bps == 0
     monkeypatch.setitem(config_mod.DEFAULT_BUILDER, "mainnet", BUILDER)
     c = cfg_after([], "default.toml")
@@ -87,6 +91,13 @@ def test_init_default_builder_is_used_only_when_set_and_can_be_declined(tmp_path
     other = "0x" + "12" * 20
     c = cfg_after(["--builder-address", other], "own.toml")           # an explicit builder keeps the old fee default
     assert c.builder_address.lower() == other and c.builder_fee_tenths_bps == 0
+
+
+def test_shipped_default_builder_is_a_valid_mainnet_address():
+    from omx import config as config_mod
+    b = config_mod.DEFAULT_BUILDER["mainnet"]
+    assert config_mod.ADDRESS.match(b) and config_mod.DEFAULT_BUILDER["testnet"] is None
+    assert config_mod.DEFAULT_BUILDER_FEE_TENTHS_BPS == 10
 
 
 def test_init_blocked_resident_writes_nothing(tmp_path):

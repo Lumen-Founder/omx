@@ -313,7 +313,7 @@ def _init_builder(ns) -> tuple:
     if ns.builder_address:
         return ns.builder_address, 0 if ns.fee_tenths_bps is None else ns.fee_tenths_bps
     default = config_mod.DEFAULT_BUILDER.get(ns.network)
-    if default is None:
+    if default is None or default.lower() == ns.account.lower():     # the builder's own account pays no builder fee
         return None, 0 if ns.fee_tenths_bps is None else ns.fee_tenths_bps
     fee = config_mod.DEFAULT_BUILDER_FEE_TENTHS_BPS if ns.fee_tenths_bps is None else ns.fee_tenths_bps
     return default, fee
